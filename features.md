@@ -53,5 +53,125 @@
 - Automatic mode enforcement based on balance
 - Clean separation of concerns between wallet and mode functionality
 
+## Token Analysis (dexscreener.js)
+### Core Features
+- **Token Discovery**
+  - Boosted token detection
+  - Trending token search
+  - Keyword-based pair discovery
+  - Multi-source token aggregation
+  - Automatic age filtering (2 days)
+
+- **Market Analysis**
+  - Real-time price monitoring
+  - Multi-timeframe analysis (5m, 1h, 24h)
+  - Volume and liquidity tracking
+  - Market cap trend detection
+  - Price velocity measurement
+  - Transaction pattern analysis
+
+- **Risk Management**
+  - Honeypot detection system
+    - Buy/sell ratio analysis
+    - Liquidity trap detection
+    - Transaction pattern monitoring
+    - Multi-timeframe validation
+  - Market cap trend analysis
+    - Trend direction identification
+    - Confidence level assessment
+    - Score-based evaluation
+  
+- **Performance Optimization**
+  - Batch processing for API calls
+  - Request rate limiting
+  - Caching system
+  - Parallel data processing
+  - Error retry mechanism
+
+### Technical Capabilities
+- Real-time data fetching
+- Smart token scoring system
+- Comprehensive error handling
+- API rate limit compliance
+- Efficient data processing
+- Detailed token metrics tracking
+
+### Analysis Metrics
+- Price movements across timeframes
+- Volume/liquidity ratios
+- Market cap trends
+- Transaction patterns
+- Risk indicators
+- Token age validation
+- Boost status tracking
+
+## Advanced Market Analysis (gecko.js)
+### Core Features
+- **Comprehensive Technical Analysis**
+  - Multi-timeframe OHLCV data analysis
+  - 15+ technical indicators implementation
+  - Custom indicator calculations
+  - Advanced profit detection
+  - Real-time market data processing
+  - Pool-specific analysis
+
+- **Technical Indicators Suite**
+  - Moving Averages (SMA, EMA, DEMA, TEMA, TRIMA, VWMA)
+  - Momentum Indicators (MACD, RSI, Stochastic, Awesome Oscillator)
+  - Volatility Indicators (Bollinger Bands, ATR, Keltner Channels)
+  - Volume Analysis (OBV, MFI, CMF, VPT)
+  - Trend Indicators (PSAR, Vortex, PPO)
+  - Custom Calculations (VWAP, AD)
+
+- **Market Analysis**
+  - Pool liquidity analysis
+  - Volume profiling
+  - Price movement tracking
+  - Market cap monitoring
+  - Volatility assessment
+  - Buy/sell signal generation
+
+- **Signal Generation**
+  - Multi-factor buy signal analysis
+  - Combined indicator signals
+  - Volume-based confirmation
+  - Trend strength assessment
+  - Risk level evaluation
+  - Entry/exit point detection
+
+### Technical Capabilities
+- **Data Processing**
+  - Rate-limited API requests
+  - Exponential backoff retry mechanism
+  - Efficient data caching
+  - Parallel processing support
+  - Error handling and recovery
+  - Data validation and normalization
+
+- **Analysis Methods**
+  - Real-time indicator calculation
+  - Custom technical analysis
+  - Market trend detection
+  - Volatility measurement
+  - Risk assessment
+  - Signal correlation
+
+### Output Features
+- **Data Visualization**
+  - Detailed token metrics
+  - Technical indicator values
+  - Market analysis results
+  - Buy/sell signals
+  - Risk assessments
+  - Performance tracking
+
+- **Logging System**
+  - Comprehensive trade logging
+  - Analysis history tracking
+  - Signal generation records
+  - Performance metrics
+  - Error tracking
+  - Market state snapshots
+
 ---
 *Note: This document will be updated as new features and components are implemented.*

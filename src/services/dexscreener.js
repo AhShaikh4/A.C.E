@@ -7,16 +7,11 @@ const DELAY_300_PER_MIN = 200; // 0.2 second delay for 300 requests/minute
 const MAX_AGE_DAYS = 2;
 const CURRENT_TIME = Date.now();
 const SEARCH_KEYWORDS = [
-    'meme',
-    'pepe',
-    'doge',
-    'shib',
-    'inu',
-    'elon',
-    'wojak',
-    'moon',
-    'gem',
-    'chad'
+    'trending', 'viral', 'pump', 'up', 'onlyup', 'buy', 'profit',
+    'moon', 'rocket', 'bull', 'skyrocket', 'hype',
+    'gain',
+    'grow', 'jump', 'spike', 'rally', 'winning', 'cash', 'gold',
+    'success', 'breakout'
 ];
 
 // Utility functions
