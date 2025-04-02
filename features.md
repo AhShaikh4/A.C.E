@@ -173,5 +173,88 @@
   - Error tracking
   - Market state snapshots
 
+## DEX Integration (jupiter.js)
+### Core Features
+- **Ultra API Integration**
+  - Instant trade execution
+  - Balance tracking
+  - Order management
+  - Transaction signing
+  - Real-time execution status
+
+- **Swap API Integration**
+  - Multi-DEX aggregation
+  - Optimal route finding
+  - Quote fetching
+  - Slippage control
+  - Dynamic compute limits
+  - Priority fee management
+
+- **Trigger API Integration**
+  - Limit order creation
+  - Order cancellation
+  - Status tracking
+  - Active order management
+  - Historical order data
+
+- **Recurring API Integration**
+  - Time-based orders
+  - Price-based orders
+  - DCA implementation
+  - Deposit management
+  - Withdrawal handling
+
+### Technical Capabilities
+- **Transaction Management**
+  - Transaction building
+  - Signature handling
+  - Confirmation tracking
+  - Error recovery
+  - Rate limiting
+
+- **Order Types**
+  - Market orders
+  - Limit orders
+  - Recurring orders
+  - Stop orders
+  - DCA orders
+
+- **Token Management**
+  - Token discovery
+  - Price tracking
+  - Market data fetching
+  - Tradable pair filtering
+  - Tagged token support
+
+### Performance Features
+- **Rate Limiting**
+  - Request throttling
+  - Concurrent control
+  - Queue management
+  - Retry mechanism
+  - Error backoff
+
+- **Transaction Optimization**
+  - Dynamic compute units
+  - Priority fee adjustment
+  - Slippage optimization
+  - Gas efficiency
+  - Transaction batching
+
+### Safety Features
+- **Error Handling**
+  - Transaction validation
+  - Balance verification
+  - Slippage protection
+  - Signature verification
+  - Network error recovery
+
+- **Risk Management**
+  - Order size limits
+  - Balance checks
+  - Transaction monitoring
+  - Failed trade recovery
+  - Automatic retries
+
 ---
 *Note: This document will be updated as new features and components are implemented.*

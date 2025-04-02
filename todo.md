@@ -61,28 +61,41 @@
   - [ ] Implement moving averages
 
 ### Trading Implementation
-- [ ] Jupiter API Integration
-  - [ ] Set up API client
-  - [ ] Implement connection handling
-  - [ ] Add transaction signing
-  - [ ] Add error handling
+- [x] Jupiter API Integration
+  - [x] Set up API client
+  - [x] Implement connection handling
+  - [x] Add transaction signing
+  - [x] Add error handling
+  - [x] Implement Ultra API for instant trades
+  - [x] Implement Swap API with DEX aggregation
+  - [x] Add Trigger API for limit orders
+  - [x] Add Recurring API for DCA
+  - [x] Implement Token & Price APIs
 - [ ] Implement Basic Trading Logic
-  - [ ] Create buy order execution
-  - [ ] Create sell order execution
-  - [ ] Add slippage protection
-  - [ ] Implement transaction confirmation checking
+  - [ ] Create buy order manager
+  - [ ] Create sell order manager
+  - [ ] Add automated trading strategies
+  - [ ] Configure optimal slippage per token
+  - [ ] Implement transaction retry mechanism
+  - [ ] Add gas optimization
+  - [ ] Add failed transaction recovery
 
 ### Trade Monitoring
 - [ ] Implement Basic Trading Strategy
-  - [ ] Add profit target monitoring
-  - [ ] Add stop-loss monitoring
-  - [ ] Create position tracking
-  - [ ] Implement automatic sell triggers
-- [ ] Add Basic Trade Logging
-  - [ ] Create log structure
-  - [ ] Log trade entries
-  - [ ] Log trade exits
-  - [ ] Track profit/loss
+  - [ ] Create position tracker
+  - [ ] Implement dynamic profit targets
+  - [ ] Add trailing stop-loss
+  - [ ] Add ROI calculation
+  - [ ] Implement risk management
+  - [ ] Add portfolio rebalancing
+  - [ ] Create alert system
+- [ ] Add Trade Logging
+  - [ ] Design logging schema
+  - [ ] Add trade execution logging
+  - [ ] Add performance metrics
+  - [ ] Implement error tracking
+  - [ ] Add historical analysis tools
+  - [ ] Create reporting system
 
 ## Phase 2: Strategy Enhancement
 ### Advanced Token Selection
