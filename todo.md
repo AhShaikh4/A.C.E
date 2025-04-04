@@ -53,12 +53,18 @@
   - [x] Add sophisticated profit detection
   - [x] Add extensive market analysis
   - [x] Implement combined signal analysis
-- [ ] Advanced Integration
-  - [ ] Integrate Moralis API
-    - [ ] Set up client
-    - [ ] Implement data fetching
-    - [ ] Add error handling
-  - [ ] Implement moving averages
+- [x] Advanced Integration
+  - [x] Integrate Moralis API
+    - [x] Set up client
+    - [x] Implement data fetching
+    - [x] Add error handling
+  - [x] Implement moving averages
+  - [x] Implement Ichimoku Cloud indicator
+  - [x] Optimize token filtering workflow
+    - [x] Add tiered filtering approach
+    - [x] Prioritize recent momentum (5m, 1h)
+    - [x] Increase liquidity/volume thresholds
+    - [x] Add fallback mechanisms for API failures
 
 ### Trading Implementation
 - [x] Jupiter API Integration

@@ -103,12 +103,55 @@ async function fetchTokens() {
   const allPools = [...defaultNewPools, ...defaultTrendingPools, ...filteredNewPools, ...filteredTrendingPools];
 
   // Deduplicate by token address
-  const uniqueTokens = [...new Map(allPools.map(pool => [
+  const allUniqueTokens = [...new Map(allPools.map(pool => [
     pool.relationships.base_token.data.id.split('_')[1], pool
-  ])).values()].slice(0, 10);
+  ])).values()];
 
-  console.log(`Fetched ${uniqueTokens.length} unique Solana tokens after deduplication`);
-  return uniqueTokens;
+  // Calculate a preliminary score for each token based on available metrics
+  const scoredTokens = allUniqueTokens.map(pool => {
+    const liquidity = parseFloat(pool.attributes.reserve_in_usd || 0);
+    const volume24h = parseFloat(pool.attributes.volume_usd?.h24 || 0);
+    const priceChange24h = parseFloat(pool.attributes.price_change_percentage?.h24 || 0);
+    const priceChange1h = parseFloat(pool.attributes.price_change_percentage?.h1 || 0);
+    const priceChange6h = parseFloat(pool.attributes.price_change_percentage?.h6 || 0);
+    const ageDays = pool.attributes.pool_created_at
+      ? (Date.now() - new Date(pool.attributes.pool_created_at).getTime()) / (1000 * 60 * 60 * 24)
+      : 0;
+
+    // Calculate a preliminary score based on available metrics
+    let prelimScore = 0;
+
+    // Volume and liquidity are important indicators
+    prelimScore += (volume24h / 10000) * 5; // 5 points per $10k volume
+    prelimScore += (liquidity / 20000) * 3; // 3 points per $20k liquidity
+
+    // Price changes can indicate momentum
+    prelimScore += priceChange1h * 0.2;
+    prelimScore += priceChange6h * 0.3;
+    prelimScore += priceChange24h * 0.5;
+
+    // Newer pools might be more interesting
+    if (ageDays < 3) prelimScore += 10;
+    else if (ageDays < 7) prelimScore += 5;
+
+    // Volume to liquidity ratio (high ratio = more trading activity)
+    const volumeLiquidityRatio = liquidity > 0 ? volume24h / liquidity : 0;
+    prelimScore += Math.min(20, volumeLiquidityRatio * 10);
+
+    return {
+      pool,
+      prelimScore
+    };
+  });
+
+  // Sort by preliminary score and take top 30 for detailed analysis
+  const topTokens = scoredTokens
+    .sort((a, b) => b.prelimScore - a.prelimScore)
+    .slice(0, 30)
+    .map(item => item.pool);
+
+  console.log(`Fetched ${allUniqueTokens.length} unique Solana tokens, selected top 30 for detailed analysis`);
+  return topTokens;
 }
 
-module.exports = { fetchTokens };
+module.exports = { fetchTokens, fetchTrendingPools };

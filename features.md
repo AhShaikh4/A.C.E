@@ -35,7 +35,7 @@
   - Two distinct operating modes:
     1. Trading Mode: Enables automatic buying and selling
     2. Monitoring Mode: Market observation without trading
-  
+
 - **Balance-Based Mode Control**
   - Automatic mode restriction based on wallet balance
   - Enforces minimum balance requirements for trading
@@ -80,7 +80,7 @@
     - Trend direction identification
     - Confidence level assessment
     - Score-based evaluation
-  
+
 - **Performance Optimization**
   - Batch processing for API calls
   - Request rate limiting
@@ -120,7 +120,7 @@
   - Momentum Indicators (MACD, RSI, Stochastic, Awesome Oscillator)
   - Volatility Indicators (Bollinger Bands, ATR, Keltner Channels)
   - Volume Analysis (OBV, MFI, CMF, VPT)
-  - Trend Indicators (PSAR, Vortex, PPO)
+  - Trend Indicators (PSAR, Vortex, PPO, Ichimoku Cloud)
   - Custom Calculations (VWAP, AD)
 
 - **Market Analysis**
@@ -138,6 +138,21 @@
   - Trend strength assessment
   - Risk level evaluation
   - Entry/exit point detection
+
+- **Optimized Token Filtering**
+  - Tiered filtering workflow
+    - Initial filtering by liquidity and volume thresholds
+    - Secondary filtering by recent price trends
+    - Detailed TA only on promising candidates
+    - Final validation with on-chain data
+  - Recent momentum prioritization
+    - Higher weighting for 5m and 1h price changes
+    - Penalty for negative recent price action
+    - Minimum thresholds for liquidity ($20K) and volume ($20K)
+  - Resilient processing
+    - Fallback mechanisms for API failures
+    - Graceful degradation of analysis
+    - Detailed logging for debugging
 
 ### Technical Capabilities
 - **Data Processing**
