@@ -1,275 +1,286 @@
-# Solana Memecoin Trading Bot - Component Features
+# 🚀 Solana Memecoin Trading Bot
 
-## Wallet Management (wallet.js)
-### Core Features
-- **Wallet Initialization**
-  - Securely loads private key from environment variables
-  - Validates private key format and length
-  - Provides detailed error messages for invalid configurations
-  - Uses bs58 encoding for proper key handling
+<div align="center">
 
-- **Network Connection**
-  - Supports multiple networks (mainnet-beta, devnet, testnet)
-  - Configurable network selection via environment variables
-  - Connection status verification
-  - Automatic retry mechanism for failed connections
-  - Robust error handling for network issues
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Platform](https://img.shields.io/badge/platform-Solana-blueviolet)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-- **Balance Management**
-  - Retrieves real-time SOL balance
-  - Displays balance with 8 decimal precision
-  - Implements minimum balance checking (0.001 SOL threshold)
-  - Validates sufficient funds for trading operations
-  - Retry mechanism for balance fetch failures (3 attempts)
+</div>
 
-- **Error Handling**
-  - Comprehensive validation for wallet initialization
-  - Network connection error detection and recovery
-  - Detailed error messages for troubleshooting
-  - Graceful failure handling with appropriate user feedback
+## 📋 Overview
 
-## Mode Selection (mode.js)
-### Core Features
-- **Operation Mode Selection**
-  - Interactive command-line interface for mode selection
-  - Two distinct operating modes:
-    1. Trading Mode: Enables automatic buying and selling
-    2. Monitoring Mode: Market observation without trading
-
-- **Balance-Based Mode Control**
-  - Automatic mode restriction based on wallet balance
-  - Enforces minimum balance requirements for trading
-  - Prevents trading operations with insufficient funds
-
-- **User Interface**
-  - Clear and intuitive mode selection prompt
-  - Detailed mode descriptions for user guidance
-  - Immediate feedback on mode selection
-  - Status display showing current operating mode
-
-### Technical Capabilities
-- Real-time balance verification
-- Interactive CLI using inquirer
-- Automatic mode enforcement based on balance
-- Clean separation of concerns between wallet and mode functionality
-
-## Token Analysis (dexscreener.js)
-### Core Features
-- **Token Discovery**
-  - Boosted token detection
-  - Trending token search
-  - Keyword-based pair discovery
-  - Multi-source token aggregation
-  - Automatic age filtering (2 days)
-
-- **Market Analysis**
-  - Real-time price monitoring
-  - Multi-timeframe analysis (5m, 1h, 24h)
-  - Volume and liquidity tracking
-  - Market cap trend detection
-  - Price velocity measurement
-  - Transaction pattern analysis
-
-- **Risk Management**
-  - Honeypot detection system
-    - Buy/sell ratio analysis
-    - Liquidity trap detection
-    - Transaction pattern monitoring
-    - Multi-timeframe validation
-  - Market cap trend analysis
-    - Trend direction identification
-    - Confidence level assessment
-    - Score-based evaluation
-
-- **Performance Optimization**
-  - Batch processing for API calls
-  - Request rate limiting
-  - Caching system
-  - Parallel data processing
-  - Error retry mechanism
-
-### Technical Capabilities
-- Real-time data fetching
-- Smart token scoring system
-- Comprehensive error handling
-- API rate limit compliance
-- Efficient data processing
-- Detailed token metrics tracking
-
-### Analysis Metrics
-- Price movements across timeframes
-- Volume/liquidity ratios
-- Market cap trends
-- Transaction patterns
-- Risk indicators
-- Token age validation
-- Boost status tracking
-
-## Advanced Market Analysis (gecko.js)
-### Core Features
-- **Comprehensive Technical Analysis**
-  - Multi-timeframe OHLCV data analysis
-  - 15+ technical indicators implementation
-  - Custom indicator calculations
-  - Advanced profit detection
-  - Real-time market data processing
-  - Pool-specific analysis
-
-- **Technical Indicators Suite**
-  - Moving Averages (SMA, EMA, DEMA, TEMA, TRIMA, VWMA)
-  - Momentum Indicators (MACD, RSI, Stochastic, Awesome Oscillator)
-  - Volatility Indicators (Bollinger Bands, ATR, Keltner Channels)
-  - Volume Analysis (OBV, MFI, CMF, VPT)
-  - Trend Indicators (PSAR, Vortex, PPO, Ichimoku Cloud)
-  - Custom Calculations (VWAP, AD)
-
-- **Market Analysis**
-  - Pool liquidity analysis
-  - Volume profiling
-  - Price movement tracking
-  - Market cap monitoring
-  - Volatility assessment
-  - Buy/sell signal generation
-
-- **Signal Generation**
-  - Multi-factor buy signal analysis
-  - Combined indicator signals
-  - Volume-based confirmation
-  - Trend strength assessment
-  - Risk level evaluation
-  - Entry/exit point detection
-
-- **Optimized Token Filtering**
-  - Tiered filtering workflow
-    - Initial filtering by liquidity and volume thresholds
-    - Secondary filtering by recent price trends
-    - Detailed TA only on promising candidates
-    - Final validation with on-chain data
-  - Recent momentum prioritization
-    - Higher weighting for 5m and 1h price changes
-    - Penalty for negative recent price action
-    - Minimum thresholds for liquidity ($20K) and volume ($20K)
-  - Resilient processing
-    - Fallback mechanisms for API failures
-    - Graceful degradation of analysis
-    - Detailed logging for debugging
-
-### Technical Capabilities
-- **Data Processing**
-  - Rate-limited API requests
-  - Exponential backoff retry mechanism
-  - Efficient data caching
-  - Parallel processing support
-  - Error handling and recovery
-  - Data validation and normalization
-
-- **Analysis Methods**
-  - Real-time indicator calculation
-  - Custom technical analysis
-  - Market trend detection
-  - Volatility measurement
-  - Risk assessment
-  - Signal correlation
-
-### Output Features
-- **Data Visualization**
-  - Detailed token metrics
-  - Technical indicator values
-  - Market analysis results
-  - Buy/sell signals
-  - Risk assessments
-  - Performance tracking
-
-- **Logging System**
-  - Comprehensive trade logging
-  - Analysis history tracking
-  - Signal generation records
-  - Performance metrics
-  - Error tracking
-  - Market state snapshots
-
-## DEX Integration (jupiter.js)
-### Core Features
-- **Ultra API Integration**
-  - Instant trade execution
-  - Balance tracking
-  - Order management
-  - Transaction signing
-  - Real-time execution status
-
-- **Swap API Integration**
-  - Multi-DEX aggregation
-  - Optimal route finding
-  - Quote fetching
-  - Slippage control
-  - Dynamic compute limits
-  - Priority fee management
-
-- **Trigger API Integration**
-  - Limit order creation
-  - Order cancellation
-  - Status tracking
-  - Active order management
-  - Historical order data
-
-- **Recurring API Integration**
-  - Time-based orders
-  - Price-based orders
-  - DCA implementation
-  - Deposit management
-  - Withdrawal handling
-
-### Technical Capabilities
-- **Transaction Management**
-  - Transaction building
-  - Signature handling
-  - Confirmation tracking
-  - Error recovery
-  - Rate limiting
-
-- **Order Types**
-  - Market orders
-  - Limit orders
-  - Recurring orders
-  - Stop orders
-  - DCA orders
-
-- **Token Management**
-  - Token discovery
-  - Price tracking
-  - Market data fetching
-  - Tradable pair filtering
-  - Tagged token support
-
-### Performance Features
-- **Rate Limiting**
-  - Request throttling
-  - Concurrent control
-  - Queue management
-  - Retry mechanism
-  - Error backoff
-
-- **Transaction Optimization**
-  - Dynamic compute units
-  - Priority fee adjustment
-  - Slippage optimization
-  - Gas efficiency
-  - Transaction batching
-
-### Safety Features
-- **Error Handling**
-  - Transaction validation
-  - Balance verification
-  - Slippage protection
-  - Signature verification
-  - Network error recovery
-
-- **Risk Management**
-  - Order size limits
-  - Balance checks
-  - Transaction monitoring
-  - Failed trade recovery
-  - Automatic retries
+A sophisticated trading bot designed for automated analysis and trading of Solana memecoins. The system leverages multiple data sources, advanced technical analysis, and optimized execution strategies to identify and capitalize on trading opportunities in the fast-paced Solana memecoin market.
 
 ---
-*Note: This document will be updated as new features and components are implemented.*
+
+## 🔑 Core Components
+
+### 1. Wallet Management (`wallet.js`)
+
+<details>
+<summary><b>Wallet Initialization & Security</b></summary>
+
+- ✅ Secure private key handling with environment variables
+- ✅ Robust key validation and bs58 encoding
+- ✅ Comprehensive error messaging
+- ✅ Multi-network support (mainnet-beta, devnet, testnet)
+- ✅ Connection status verification with auto-retry
+
+</details>
+
+<details>
+<summary><b>Balance Management</b></summary>
+
+- ✅ Real-time SOL balance retrieval (8 decimal precision)
+- ✅ Minimum balance enforcement (0.001 SOL threshold)
+- ✅ Trading operation fund validation
+- ✅ Balance fetch retry mechanism (3 attempts)
+- ✅ Graceful error handling with user feedback
+
+</details>
+
+### 2. Operation Mode (`mode.js`)
+
+<details>
+<summary><b>Mode Selection & Control</b></summary>
+
+- ✅ Interactive CLI interface
+- ✅ Dual operating modes:
+  - 🔄 **Trading Mode**: Automated buying and selling
+  - 👁️ **Monitoring Mode**: Market observation only
+- ✅ Balance-based mode restrictions
+- ✅ Intuitive user prompts and feedback
+- ✅ Real-time status display
+
+</details>
+
+### 3. Token Analysis (`dexscreener.js`)
+
+<details>
+<summary><b>Token Discovery & Filtering</b></summary>
+
+- ✅ Boosted token detection
+- ✅ Trending token identification
+- ✅ Keyword-based pair discovery
+- ✅ Multi-source aggregation
+- ✅ Age-based filtering (2 days)
+
+</details>
+
+<details>
+<summary><b>Market Analysis</b></summary>
+
+- ✅ Real-time price monitoring
+- ✅ Multi-timeframe analysis (5m, 1h, 24h)
+- ✅ Volume and liquidity tracking
+- ✅ Market cap trend detection
+- ✅ Transaction pattern analysis
+
+</details>
+
+<details>
+<summary><b>Risk Management</b></summary>
+
+- ✅ Honeypot detection system
+  - Buy/sell ratio analysis
+  - Liquidity trap detection
+  - Transaction pattern monitoring
+- ✅ Market cap trend analysis
+  - Trend direction identification
+  - Confidence level assessment
+  - Score-based evaluation
+
+</details>
+
+### 4. Advanced Technical Analysis (`TA.js`)
+
+<details>
+<summary><b>Technical Indicators Suite</b></summary>
+
+- ✅ **Moving Averages**
+  - Simple (SMA), Exponential (EMA)
+  - Double Exponential (DEMA), Triple Exponential (TEMA)
+  - Triangular (TRIMA), Volume Weighted (VWMA)
+
+- ✅ **Momentum Indicators**
+  - MACD, RSI, Stochastic Oscillator
+  - Awesome Oscillator, Money Flow Index
+
+- ✅ **Volatility Indicators**
+  - Bollinger Bands, Average True Range (ATR)
+  - Keltner Channels, Standard Deviation
+
+- ✅ **Volume Indicators**
+  - On-Balance Volume (OBV), Money Flow Index (MFI)
+  - Chaikin Money Flow (CMF), Volume Price Trend (VPT)
+
+- ✅ **Trend Indicators**
+  - Parabolic SAR, Vortex Indicator
+  - Percentage Price Oscillator (PPO)
+  - Ichimoku Cloud (Ichimoku Kinko Hyo)
+
+- ✅ **Custom Calculations**
+  - Volume Weighted Average Price (VWAP)
+  - Accumulation/Distribution Line (AD)
+
+</details>
+
+<details>
+<summary><b>Optimized Token Filtering</b></summary>
+
+- ✅ **Tiered Filtering Workflow**
+  - Initial filtering by liquidity ($20K) and volume ($20K)
+  - Secondary filtering by recent price trends
+  - Detailed TA only on promising candidates
+  - Final validation with on-chain data
+
+- ✅ **Recent Momentum Prioritization**
+  - Higher weighting for 5m and 1h price changes
+  - Penalty for negative recent price action
+  - Minimum thresholds for liquidity and volume
+
+- ✅ **Resilient Processing**
+  - Fallback mechanisms for API failures
+  - Graceful degradation of analysis
+  - Detailed logging for debugging
+
+</details>
+
+<details>
+<summary><b>Signal Generation</b></summary>
+
+- ✅ Multi-factor buy signal analysis
+- ✅ Combined indicator signals
+- ✅ Volume-based confirmation
+- ✅ Trend strength assessment
+- ✅ Risk level evaluation
+- ✅ Entry/exit point detection
+
+</details>
+
+### 5. Market Data Integration (`gecko.js`)
+
+<details>
+<summary><b>Data Processing</b></summary>
+
+- ✅ Multi-timeframe OHLCV data analysis
+- ✅ Rate-limited API requests with exponential backoff
+- ✅ Efficient data caching and parallel processing
+- ✅ Error handling and recovery mechanisms
+- ✅ Data validation and normalization
+
+</details>
+
+<details>
+<summary><b>Output Features</b></summary>
+
+- ✅ Detailed token metrics visualization
+- ✅ Technical indicator value reporting
+- ✅ Market analysis results
+- ✅ Buy/sell signal generation
+- ✅ Comprehensive logging system
+
+</details>
+
+### 6. On-Chain Analysis (`moralis.js`)
+
+<details>
+<summary><b>Holder Analysis</b></summary>
+
+- ✅ Current holder count retrieval
+- ✅ Historical holder data analysis
+- ✅ Holder change percentage calculation
+- ✅ Holder distribution patterns
+- ✅ Growth rate assessment
+
+</details>
+
+<details>
+<summary><b>Transaction Analysis</b></summary>
+
+- ✅ Sniper detection and analysis
+- ✅ Smart money tracking
+- ✅ Whale wallet monitoring
+- ✅ Transaction pattern recognition
+- ✅ Profit calculation for market participants
+
+</details>
+
+### 7. DEX Integration (`jupiter.js`)
+
+<details>
+<summary><b>Trading APIs</b></summary>
+
+- ✅ **Ultra API**: Instant trade execution
+- ✅ **Swap API**: Multi-DEX aggregation with optimal routing
+- ✅ **Trigger API**: Limit order creation and management
+- ✅ **Recurring API**: Time-based and DCA order implementation
+
+</details>
+
+<details>
+<summary><b>Transaction Management</b></summary>
+
+- ✅ Transaction building and signature handling
+- ✅ Confirmation tracking and error recovery
+- ✅ Dynamic compute units and priority fee adjustment
+- ✅ Slippage optimization and gas efficiency
+- ✅ Transaction validation and balance verification
+
+</details>
+
+<details>
+<summary><b>Order Types</b></summary>
+
+- ✅ Market orders
+- ✅ Limit orders
+- ✅ Recurring orders
+- ✅ Stop orders
+- ✅ DCA (Dollar Cost Averaging) orders
+
+</details>
+
+---
+
+## 📊 Performance Features
+
+<details>
+<summary><b>Optimization Techniques</b></summary>
+
+- ✅ API request batching and rate limiting
+- ✅ Concurrent processing with throttling
+- ✅ Data caching and reuse
+- ✅ Efficient error handling with backoff strategies
+- ✅ Resource usage optimization
+
+</details>
+
+<details>
+<summary><b>Safety Mechanisms</b></summary>
+
+- ✅ Transaction validation and verification
+- ✅ Balance checks and order size limits
+- ✅ Slippage protection
+- ✅ Failed trade recovery
+- ✅ Network error handling
+
+</details>
+
+---
+
+## 🔄 Ongoing Development
+
+- 🔜 Advanced trading strategies implementation
+- 🔜 Backtesting framework
+- 🔜 Paper trading mode
+- 🔜 Machine learning integration
+- 🔜 Database and analytics dashboard
+
+---
+
+<div align="center">
+
+*This document is updated regularly as new features are implemented.*
+
+</div>
