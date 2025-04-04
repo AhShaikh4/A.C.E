@@ -1,25 +1,16 @@
-# 🚀 Solana Memecoin Trading Bot
+# Solana Memecoin Trading Bot
 
-<div align="center">
-
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Platform](https://img.shields.io/badge/platform-Solana-blueviolet)
-![License](https://img.shields.io/badge/license-MIT-green)
-
-</div>
-
-## 📋 Overview
+## Overview
 
 A sophisticated trading bot designed for automated analysis and trading of Solana memecoins. The system leverages multiple data sources, advanced technical analysis, and optimized execution strategies to identify and capitalize on trading opportunities in the fast-paced Solana memecoin market.
 
 ---
 
-## 🔑 Core Components
+## Core Components
 
 ### 1. Wallet Management (`wallet.js`)
 
-<details>
-<summary><b>Wallet Initialization & Security</b></summary>
+#### Wallet Initialization & Security
 
 - ✅ Secure private key handling with environment variables
 - ✅ Robust key validation and bs58 encoding
@@ -27,10 +18,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Multi-network support (mainnet-beta, devnet, testnet)
 - ✅ Connection status verification with auto-retry
 
-</details>
-
-<details>
-<summary><b>Balance Management</b></summary>
+#### Balance Management
 
 - ✅ Real-time SOL balance retrieval (8 decimal precision)
 - ✅ Minimum balance enforcement (0.001 SOL threshold)
@@ -38,27 +26,21 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Balance fetch retry mechanism (3 attempts)
 - ✅ Graceful error handling with user feedback
 
-</details>
-
 ### 2. Operation Mode (`mode.js`)
 
-<details>
-<summary><b>Mode Selection & Control</b></summary>
+#### Mode Selection & Control
 
 - ✅ Interactive CLI interface
 - ✅ Dual operating modes:
-  - 🔄 **Trading Mode**: Automated buying and selling
-  - 👁️ **Monitoring Mode**: Market observation only
+  - **Trading Mode**: Automated buying and selling
+  - **Monitoring Mode**: Market observation only
 - ✅ Balance-based mode restrictions
 - ✅ Intuitive user prompts and feedback
 - ✅ Real-time status display
 
-</details>
-
 ### 3. Token Analysis (`dexscreener.js`)
 
-<details>
-<summary><b>Token Discovery & Filtering</b></summary>
+#### Token Discovery & Filtering
 
 - ✅ Boosted token detection
 - ✅ Trending token identification
@@ -66,10 +48,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Multi-source aggregation
 - ✅ Age-based filtering (2 days)
 
-</details>
-
-<details>
-<summary><b>Market Analysis</b></summary>
+#### Market Analysis
 
 - ✅ Real-time price monitoring
 - ✅ Multi-timeframe analysis (5m, 1h, 24h)
@@ -77,10 +56,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Market cap trend detection
 - ✅ Transaction pattern analysis
 
-</details>
-
-<details>
-<summary><b>Risk Management</b></summary>
+#### Risk Management
 
 - ✅ Honeypot detection system
   - Buy/sell ratio analysis
@@ -91,12 +67,9 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
   - Confidence level assessment
   - Score-based evaluation
 
-</details>
-
 ### 4. Advanced Technical Analysis (`TA.js`)
 
-<details>
-<summary><b>Technical Indicators Suite</b></summary>
+#### Technical Indicators Suite
 
 - ✅ **Moving Averages**
   - Simple (SMA), Exponential (EMA)
@@ -124,10 +97,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
   - Volume Weighted Average Price (VWAP)
   - Accumulation/Distribution Line (AD)
 
-</details>
-
-<details>
-<summary><b>Optimized Token Filtering</b></summary>
+#### Optimized Token Filtering
 
 - ✅ **Tiered Filtering Workflow**
   - Initial filtering by liquidity ($20K) and volume ($20K)
@@ -145,10 +115,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
   - Graceful degradation of analysis
   - Detailed logging for debugging
 
-</details>
-
-<details>
-<summary><b>Signal Generation</b></summary>
+#### Signal Generation
 
 - ✅ Multi-factor buy signal analysis
 - ✅ Combined indicator signals
@@ -157,12 +124,9 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Risk level evaluation
 - ✅ Entry/exit point detection
 
-</details>
-
 ### 5. Market Data Integration (`gecko.js`)
 
-<details>
-<summary><b>Data Processing</b></summary>
+#### Data Processing
 
 - ✅ Multi-timeframe OHLCV data analysis
 - ✅ Rate-limited API requests with exponential backoff
@@ -170,10 +134,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Error handling and recovery mechanisms
 - ✅ Data validation and normalization
 
-</details>
-
-<details>
-<summary><b>Output Features</b></summary>
+#### Output Features
 
 - ✅ Detailed token metrics visualization
 - ✅ Technical indicator value reporting
@@ -181,12 +142,9 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Buy/sell signal generation
 - ✅ Comprehensive logging system
 
-</details>
-
 ### 6. On-Chain Analysis (`moralis.js`)
 
-<details>
-<summary><b>Holder Analysis</b></summary>
+#### Holder Analysis
 
 - ✅ Current holder count retrieval
 - ✅ Historical holder data analysis
@@ -194,10 +152,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Holder distribution patterns
 - ✅ Growth rate assessment
 
-</details>
-
-<details>
-<summary><b>Transaction Analysis</b></summary>
+#### Transaction Analysis
 
 - ✅ Sniper detection and analysis
 - ✅ Smart money tracking
@@ -205,22 +160,16 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Transaction pattern recognition
 - ✅ Profit calculation for market participants
 
-</details>
-
 ### 7. DEX Integration (`jupiter.js`)
 
-<details>
-<summary><b>Trading APIs</b></summary>
+#### Trading APIs
 
 - ✅ **Ultra API**: Instant trade execution
 - ✅ **Swap API**: Multi-DEX aggregation with optimal routing
 - ✅ **Trigger API**: Limit order creation and management
 - ✅ **Recurring API**: Time-based and DCA order implementation
 
-</details>
-
-<details>
-<summary><b>Transaction Management</b></summary>
+#### Transaction Management
 
 - ✅ Transaction building and signature handling
 - ✅ Confirmation tracking and error recovery
@@ -228,10 +177,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Slippage optimization and gas efficiency
 - ✅ Transaction validation and balance verification
 
-</details>
-
-<details>
-<summary><b>Order Types</b></summary>
+#### Order Types
 
 - ✅ Market orders
 - ✅ Limit orders
@@ -239,14 +185,11 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Stop orders
 - ✅ DCA (Dollar Cost Averaging) orders
 
-</details>
-
 ---
 
-## 📊 Performance Features
+## Performance Features
 
-<details>
-<summary><b>Optimization Techniques</b></summary>
+#### Optimization Techniques
 
 - ✅ API request batching and rate limiting
 - ✅ Concurrent processing with throttling
@@ -254,10 +197,7 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Efficient error handling with backoff strategies
 - ✅ Resource usage optimization
 
-</details>
-
-<details>
-<summary><b>Safety Mechanisms</b></summary>
+#### Safety Mechanisms
 
 - ✅ Transaction validation and verification
 - ✅ Balance checks and order size limits
@@ -265,22 +205,16 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Failed trade recovery
 - ✅ Network error handling
 
-</details>
-
 ---
 
-## 🔄 Ongoing Development
+## Ongoing Development
 
-- 🔜 Advanced trading strategies implementation
-- 🔜 Backtesting framework
-- 🔜 Paper trading mode
-- 🔜 Machine learning integration
-- 🔜 Database and analytics dashboard
+- Advanced trading strategies implementation
+- Backtesting framework
+- Paper trading mode
+- Machine learning integration
+- Database and analytics dashboard
 
 ---
-
-<div align="center">
 
 *This document is updated regularly as new features are implemented.*
-
-</div>
