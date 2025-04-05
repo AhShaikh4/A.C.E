@@ -310,6 +310,8 @@ const normalizeGeckoToken = async (pool, boostedSet, dexService, skipDetailedDat
 const calculateScore = (token) => {
   let score = 0;
   const indicators = token.indicators['hour'] || token.indicators['minute'] || {};
+
+  // Technical indicators scoring
   if (indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0) score += 10;
   if (token.priceUsd > indicators.psar) score += 5;
   if (indicators.rsi < 30) score += 5;
@@ -319,6 +321,38 @@ const calculateScore = (token) => {
   if (token.priceUsd > indicators.keltner?.upper) score += 5;
   if (indicators.cmf > 0) score += 3;
   if (indicators.mfi < 20) score += 3;
+
+  // Transaction data scoring (if available)
+  if (token.txns) {
+    // Buy/Sell ratio scoring
+    const buySellRatio24h = token.txns.h24.buys / (token.txns.h24.sells || 1);
+    const buySellRatio5m = token.txns.m5.buys / (token.txns.m5.sells || 1);
+
+    if (buySellRatio24h > 1.5) score += 15; // Strong buying pressure
+    if (buySellRatio5m > 1) score += 10;    // Recent buying surge
+
+    // Buy pressure momentum
+    const buyPressure5m = token.txns.m5.buys / (token.txns.m5.buys + token.txns.m5.sells || 1);
+    const buyPressure1h = token.txns.h1.buys / (token.txns.h1.buys + token.txns.h1.sells || 1);
+    if (buyPressure5m > buyPressure1h && buyPressure5m > 0.6) score += 15; // Increasing buy pressure
+  }
+
+  // Volume trends scoring (if detailed volume data available)
+  if (token.volume && token.volume.m5 && token.volume.h1 && token.volume.h24) {
+    // Volume spike detection
+    const volumeSpike1h = (token.volume.h1 / (token.volume.h24 / 24)) || 0;
+    if (volumeSpike1h > 2) score += 10; // Recent volume increase
+
+    // Volume acceleration detection
+    const volumeAcceleration = (token.volume.m5 / (token.volume.h1 / 12)) -
+                             ((token.volume.h1 / 12) / (token.volume.h6 / 72));
+    if (volumeAcceleration > 0.5) score += 15; // Strong volume acceleration
+  }
+
+  // Include uptrend score if available
+  if (token.uptrendScore) {
+    score += token.uptrendScore * 0.2; // Add 20% of the uptrend score
+  }
 
   // Ichimoku Cloud scoring
   if (indicators.ichimoku) {
@@ -501,51 +535,149 @@ async function performTA() {
   const uniqueTokens = Array.from(tokenMap.values()).slice(0, 30);
   console.log(`Combined to ${uniqueTokens.length} unique trending tokens`);
 
-  // Step 3: Price Trend Filter
-  console.log('Step 3: Filtering tokens by price trend...');
+  // Step 3: Enhanced Price Trend & Market Activity Filter
+  console.log('Step 3: Performing enhanced filtering with detailed pair data...');
   const candidates = [];
+
+  // Define function to check if a token has a quality uptrend
+  const isQualityUptrend = (pairData) => {
+    // Price trend checks
+    const priceUptrend = pairData.priceChange.m5 > 0 &&
+                       (pairData.priceChange.h1 > 0 || pairData.priceChange.h6 > 0);
+
+    // Transaction sentiment check
+    const buySellRatio5m = pairData.txns.m5.buys / (pairData.txns.m5.sells || 1);
+    const buySellRatio1h = pairData.txns.h1.buys / (pairData.txns.h1.sells || 1);
+    const positiveSentiment = buySellRatio5m > 1 || buySellRatio1h > 1.2;
+
+    // Volume confirmation
+    const volumeActivity = pairData.volume.m5 > 100 && pairData.volume.h1 > 1000;
+
+    return priceUptrend && positiveSentiment && volumeActivity;
+  };
+
+  // Define function to calculate an uptrend score for a token
+  const calculateUptrendScore = (pairData) => {
+    let score = 0;
+
+    // Price Change Scoring
+    score += pairData.priceChange.m5 * 0.4;  // Strong weight on recent momentum
+    score += pairData.priceChange.h1 * 0.3;
+    score += pairData.priceChange.h6 * 0.2;
+    score += pairData.priceChange.h24 * 0.1;
+    if (pairData.priceChange.m5 < 0) score -= 10; // Penalty for recent downturn
+
+    // Transaction Sentiment Scoring
+    const buySellRatio24h = pairData.txns.h24.buys / (pairData.txns.h24.sells || 1);
+    const buySellRatio5m = pairData.txns.m5.buys / (pairData.txns.m5.sells || 1);
+    if (buySellRatio24h > 1.5) score += 15; // Strong buying pressure
+    if (buySellRatio5m > 1) score += 10;    // Recent buying surge
+
+    // Volume Trends Scoring
+    const volumeSpike1h = (pairData.volume.h1 / (pairData.volume.h24 / 24)) || 0;
+    if (volumeSpike1h > 2) score += 10; // Recent volume increase
+
+    // Volume Acceleration Detection
+    const volumeAcceleration = (pairData.volume.m5 / (pairData.volume.h1 / 12)) -
+                             ((pairData.volume.h1 / 12) / (pairData.volume.h6 / 72));
+    if (volumeAcceleration > 0.5) score += 15; // Strong volume acceleration
+
+    // Buy Pressure Momentum
+    const buyPressure5m = pairData.txns.m5.buys / (pairData.txns.m5.buys + pairData.txns.m5.sells || 1);
+    const buyPressure1h = pairData.txns.h1.buys / (pairData.txns.h1.buys + pairData.txns.h1.sells || 1);
+    if (buyPressure5m > buyPressure1h && buyPressure5m > 0.6) score += 15; // Increasing buy pressure
+
+    return score;
+  };
 
   for (const token of uniqueTokens) {
     try {
-      // Get price data from DexScreener
+      // Get basic pair data first (for backward compatibility)
       const dexPairs = await dexService.getPairsFromBoosted([{ tokenAddress: token.tokenAddress }]);
       if (!dexPairs.length) continue;
 
       const dexData = dexPairs[0];
 
-      // Check if token meets price trend criteria
-      // Require positive or stable 5-minute price change to ensure recent activity
-      if ((dexData.priceChange?.h6 > 0 || dexData.priceChange?.h24 > 0) && dexData.priceChange?.m5 > -1) {
-        // For GeckoTerminal tokens, normalize the data
-        if (token.source === 'geckoterminal') {
-          const normalizedToken = await normalizeGeckoToken(token.geckoPool, boostedSet, dexService, true); // Skip detailed data
-          if (normalizedToken) {
-            candidates.push({
-              ...normalizedToken,
-              dexData
-            });
-          }
-        } else {
-          // For DexScreener tokens, use the data we already have
+      // Get detailed pair data using the new endpoint
+      const detailedPairData = await dexService.getPairData('solana', dexData.pairAddress);
+
+      if (detailedPairData) {
+        // Use enhanced filtering with detailed pair data
+        console.log(`Analyzing detailed data for ${token.tokenAddress} (${detailedPairData.symbol})`);
+
+        // Calculate uptrend score
+        const uptrendScore = calculateUptrendScore(detailedPairData);
+        console.log(`Uptrend score: ${uptrendScore.toFixed(2)}`);
+
+        // Check if token meets quality uptrend criteria
+        if (isQualityUptrend(detailedPairData) || uptrendScore > 30) {
+          console.log(`Token ${detailedPairData.symbol} passed enhanced filtering`);
+
+          // Add enhanced data to candidates
           candidates.push({
             source: 'dexscreener',
-            tokenAddress: token.tokenAddress,
-            poolAddress: dexData.pairAddress || '',
-            symbol: dexData.baseToken?.symbol || '',
-            name: dexData.baseToken?.name || '',
-            priceUsd: parseFloat(dexData.priceUsd || 0),
-            volume24h: dexData.volume?.h24 || 0,
-            liquidity: dexData.liquidity?.usd || 0,
-            marketCap: dexData.fdv || 0,
+            tokenAddress: detailedPairData.tokenAddress,
+            poolAddress: detailedPairData.pairAddress || '',
+            symbol: detailedPairData.symbol || '',
+            name: detailedPairData.name || '',
+            priceUsd: detailedPairData.priceUsd || 0,
+            volume24h: detailedPairData.volume?.h24 || 0,
+            liquidity: detailedPairData.liquidity || 0,
+            marketCap: detailedPairData.marketCap || 0,
             priceChange: {
-              m5: dexData.priceChange?.m5 || 0,
-              h1: dexData.priceChange?.h1 || 0,
-              h6: dexData.priceChange?.h6 || 0,
-              h24: dexData.priceChange?.h24 || 0
+              m5: detailedPairData.priceChange?.m5 || 0,
+              h1: detailedPairData.priceChange?.h1 || 0,
+              h6: detailedPairData.priceChange?.h6 || 0,
+              h24: detailedPairData.priceChange?.h24 || 0
             },
-            pairAgeDays: dexData.pairCreatedAt ? (Date.now() - dexData.pairCreatedAt) / (1000 * 60 * 60 * 24) : 0,
-            isBoosted: boostedSet.has(token.tokenAddress)
+            txns: detailedPairData.txns || {
+              m5: { buys: 0, sells: 0 },
+              h1: { buys: 0, sells: 0 },
+              h6: { buys: 0, sells: 0 },
+              h24: { buys: 0, sells: 0 }
+            },
+            pairAgeDays: detailedPairData.pairCreatedAt ? (Date.now() - detailedPairData.pairCreatedAt) / (1000 * 60 * 60 * 24) : 0,
+            isBoosted: detailedPairData.isBoosted,
+            uptrendScore: uptrendScore
           });
+        } else {
+          console.log(`Token ${detailedPairData.symbol} failed enhanced filtering`);
+        }
+      } else {
+        console.warn(`No detailed pair data found for ${token.tokenAddress}, using basic data`);
+        // Fall back to basic criteria if detailed data is not available
+        if ((dexData.priceChange?.h6 > 0 || dexData.priceChange?.h24 > 0) && dexData.priceChange?.m5 > -1) {
+          // For GeckoTerminal tokens, normalize the data
+          if (token.source === 'geckoterminal') {
+            const normalizedToken = await normalizeGeckoToken(token.geckoPool, boostedSet, dexService, true); // Skip detailed data
+            if (normalizedToken) {
+              candidates.push({
+                ...normalizedToken,
+                dexData
+              });
+            }
+          } else {
+            // For DexScreener tokens, use the data we already have
+            candidates.push({
+              source: 'dexscreener',
+              tokenAddress: token.tokenAddress,
+              poolAddress: dexData.pairAddress || '',
+              symbol: dexData.baseToken?.symbol || '',
+              name: dexData.baseToken?.name || '',
+              priceUsd: parseFloat(dexData.priceUsd || 0),
+              volume24h: dexData.volume?.h24 || 0,
+              liquidity: dexData.liquidity?.usd || 0,
+              marketCap: dexData.fdv || 0,
+              priceChange: {
+                m5: dexData.priceChange?.m5 || 0,
+                h1: dexData.priceChange?.h1 || 0,
+                h6: dexData.priceChange?.h6 || 0,
+                h24: dexData.priceChange?.h24 || 0
+              },
+              pairAgeDays: dexData.pairCreatedAt ? (Date.now() - dexData.pairCreatedAt) / (1000 * 60 * 60 * 24) : 0,
+              isBoosted: boostedSet.has(token.tokenAddress)
+            });
+          }
         }
       }
     } catch (error) {
@@ -658,16 +790,37 @@ async function performTA() {
       logContent += `| Token Address: ${token.tokenAddress}\n`;
       logContent += `| Pool Address: ${token.poolAddress}\n`;
       logContent += `| Price (USD): $${token.priceUsd.toFixed(6)}\n`;
-      logContent += `| 24h Volume: $${token.volume24h.toFixed(2)}\n`;
+
+      // Volume data with more detail if available
+      if (token.volume) {
+        logContent += `| Volume: 5m: $${token.volume.m5?.toFixed(2) || '0.00'}, 1h: $${token.volume.h1?.toFixed(2) || '0.00'}, 24h: $${token.volume24h.toFixed(2)}\n`;
+      } else {
+        logContent += `| 24h Volume: $${token.volume24h.toFixed(2)}\n`;
+      }
+
       // Price changes for selected time periods
       logContent += `| 5m Price Change: ${token.priceChange.m5.toFixed(2)}%\n`;
       logContent += `| 1h Price Change: ${token.priceChange.h1.toFixed(2)}%\n`;
       logContent += `| 6h Price Change: ${token.priceChange.h6.toFixed(2)}%\n`;
       logContent += `| 24h Price Change: ${token.priceChange.h24.toFixed(2)}%\n`;
+
+      // Transaction data if available
+      if (token.txns) {
+        logContent += `| Txns (5m): Buys: ${token.txns.m5.buys}, Sells: ${token.txns.m5.sells}, Ratio: ${(token.txns.m5.buys / (token.txns.m5.sells || 1)).toFixed(2)}\n`;
+        logContent += `| Txns (1h): Buys: ${token.txns.h1.buys}, Sells: ${token.txns.h1.sells}, Ratio: ${(token.txns.h1.buys / (token.txns.h1.sells || 1)).toFixed(2)}\n`;
+        logContent += `| Txns (24h): Buys: ${token.txns.h24.buys}, Sells: ${token.txns.h24.sells}, Ratio: ${(token.txns.h24.buys / (token.txns.h24.sells || 1)).toFixed(2)}\n`;
+      }
+
       logContent += `| Liquidity: $${token.liquidity.toFixed(2)}\n`;
       logContent += `| Market Cap: $${token.marketCap.toFixed(2)}\n`;
       logContent += `| Age: ${token.pairAgeDays.toFixed(2)} days\n`;
       logContent += `| Boosted: ${token.isBoosted ? 'Yes' : 'No'}\n`;
+
+      // Add uptrend score if available
+      if (token.uptrendScore) {
+        logContent += `| Uptrend Score: ${token.uptrendScore.toFixed(2)}\n`;
+      }
+
       logContent += `| Holders: ${token.holders.totalHolders || 0}\n`;
       logContent += `| Holder Change (24h): ${token.historicalHolders?.result?.length > 1 ? (token.historicalHolders.result[token.historicalHolders.result.length - 1].totalHolders - token.historicalHolders.result[0].totalHolders) : 0} (${token.holderChange24h.toFixed(2)}%)\n`;
       logContent += `| Sniper Count: ${token.snipers?.result?.length || 0}\n`;
