@@ -395,7 +395,17 @@ const calculateScore = (token) => {
   const volumeLiquidityRatio = token.volume24h / (token.liquidity || 1);
   score += Math.min(10, volumeLiquidityRatio * 2);
 
-  return score;
+  // Normalize score to 0-100 scale
+  // Based on analysis of the scoring system, a very good token might score around 150-200 points
+  // We'll use a max theoretical score of 200 for normalization
+  const MAX_THEORETICAL_SCORE = 200;
+  const normalizedScore = Math.min(100, Math.max(0, (score / MAX_THEORETICAL_SCORE) * 100));
+
+  // Store both the raw and normalized scores
+  return {
+    raw: score,
+    normalized: normalizedScore
+  };
 };
 
 const analyzeGeckoPool = async (pool, _network, boostedSet, dexService, skipDetailedData = false) => {
@@ -607,10 +617,12 @@ async function performTA() {
 
         // Calculate uptrend score
         const uptrendScore = calculateUptrendScore(detailedPairData);
-        console.log(`Uptrend score: ${uptrendScore.toFixed(2)}`);
+        // Normalize uptrend score to 0-100 scale (assuming max theoretical score of 60)
+        const normalizedUptrendScore = Math.min(100, Math.max(0, (uptrendScore / 60) * 100));
+        console.log(`Uptrend score: ${normalizedUptrendScore.toFixed(2)}/100 (Raw: ${uptrendScore.toFixed(2)})`);
 
-        // Check if token meets quality uptrend criteria
-        if (isQualityUptrend(detailedPairData) || uptrendScore > 30) {
+        // Check if token meets quality uptrend criteria (15 on normalized scale is equivalent to 30 on raw scale with max of 200)
+        if (isQualityUptrend(detailedPairData) || normalizedUptrendScore > 50) {
           console.log(`Token ${detailedPairData.symbol} passed enhanced filtering`);
 
           // Add enhanced data to candidates
@@ -638,7 +650,8 @@ async function performTA() {
             },
             pairAgeDays: detailedPairData.pairCreatedAt ? (Date.now() - detailedPairData.pairCreatedAt) / (1000 * 60 * 60 * 24) : 0,
             isBoosted: detailedPairData.isBoosted,
-            uptrendScore: uptrendScore
+            uptrendScore: normalizedUptrendScore,
+            rawUptrendScore: uptrendScore
           });
         } else {
           console.log(`Token ${detailedPairData.symbol} failed enhanced filtering`);
@@ -702,14 +715,15 @@ async function performTA() {
       const indicators = { hour: calculateIndicators(ohlcvData) };
 
       // Calculate score
-      const score = calculateScore({ ...token, indicators });
+      const scoreResult = calculateScore({ ...token, indicators });
 
-      // Keep if score > 30
-      if (score > 30) {
+      // Keep if normalized score > 15 (equivalent to raw score > 30 with MAX_THEORETICAL_SCORE = 200)
+      if (scoreResult.normalized > 15) {
         analyzedTokens.push({
           ...token,
           indicators,
-          score,
+          score: scoreResult.normalized,
+          rawScore: scoreResult.raw,
           ohlcv: { hour: ohlcvData } // Only keep the hour timeframe data
         });
       }
@@ -818,14 +832,14 @@ async function performTA() {
 
       // Add uptrend score if available
       if (token.uptrendScore) {
-        logContent += `| Uptrend Score: ${token.uptrendScore.toFixed(2)}\n`;
+        logContent += `| Uptrend Score: ${token.uptrendScore.toFixed(2)}/100${token.rawUptrendScore ? ` (Raw: ${token.rawUptrendScore.toFixed(2)})` : ''}\n`;
       }
 
       logContent += `| Holders: ${token.holders.totalHolders || 0}\n`;
       logContent += `| Holder Change (24h): ${token.historicalHolders?.result?.length > 1 ? (token.historicalHolders.result[token.historicalHolders.result.length - 1].totalHolders - token.historicalHolders.result[0].totalHolders) : 0} (${token.holderChange24h.toFixed(2)}%)\n`;
       logContent += `| Sniper Count: ${token.snipers?.result?.length || 0}\n`;
       logContent += `| Sniper Profit: $${token.snipers?.result?.reduce((sum, s) => sum + (s.realizedProfitUsd || 0), 0).toFixed(2) || 0}\n`;
-      logContent += `| Score: ${token.score.toFixed(2)}\n`;
+      logContent += `| Score: ${token.score.toFixed(2)}/100${token.rawScore ? ` (Raw: ${token.rawScore.toFixed(2)})` : ''}\n`;
       logContent += `| Technical Indicators (1h):\n`;
       const indicators = token.indicators['hour'] || {};
       logContent += `|   SMA: ${indicators.sma?.toFixed(8) || 'N/A'}\n`;
