@@ -22,7 +22,7 @@ const { logTrade, updateStats, logSimulationStats, generateRandomString, withFal
 // Constants (matching trading.js)
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
 const BUY_AMOUNT_LAMPORTS = 200000000; // 0.2 SOL in lamports
-const MAX_POSITIONS = 4; // Maximum number of concurrent positions
+const MAX_POSITIONS = 1; // Maximum number of concurrent positions
 const PRICE_CHECK_INTERVAL = 30000; // 30 seconds for position monitoring
 const CHECK_INTERVAL = 60000; // 1 minute for checking positions and fetching tokens
 // Slippage tolerance is handled internally in the simulation
