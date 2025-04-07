@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "simulate": "node simulation/simulator.js"
   },
   "repository": {
     "type": "git",
@@ -18,7 +19,6 @@
   "homepage": "https://github.com/Codester-in-the-making/PM#readme",
   "description": "",
   "dependencies": {
-    
     "@solana/wallet-adapter-base": "^0.9.24",
     "@solana/web3.js": "^1.98.0",
     "axios": "^1.8.4",

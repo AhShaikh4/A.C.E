@@ -879,5 +879,5 @@ async function main() {
 
 main();
 
-// Export functions for use in trading.js
-module.exports = { fetchOHLCV, calculateIndicators };
+// Export functions for use in trading.js and simulation
+module.exports = { fetchOHLCV, calculateIndicators, performTA };
