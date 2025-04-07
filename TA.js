@@ -868,10 +868,16 @@ async function main() {
   try {
     const finalTokens = await performTA();
     console.log(`Ready to trade ${finalTokens.length} tokens`);
-    // Add Jupiter trading logic here
+
+    // Import and execute trading strategy
+    const { executeTradingStrategy } = require('./trading');
+    await executeTradingStrategy(finalTokens);
   } catch (error) {
     console.error('Error in TA:', error.message);
   }
 }
 
 main();
+
+// Export functions for use in trading.js
+module.exports = { fetchOHLCV, calculateIndicators };
