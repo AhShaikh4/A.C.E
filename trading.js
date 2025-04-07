@@ -11,9 +11,9 @@ const { fetchOHLCV, calculateIndicators } = require('./TA');
 // Constants
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
 const BUY_AMOUNT_LAMPORTS = 200000000; // 0.2 SOL in lamports
-const MAX_POSITIONS = 4; // Maximum number of concurrent positions
+const MAX_POSITIONS = 1; // Maximum number of concurrent positions (limited to 1)
 const PRICE_CHECK_INTERVAL = 30000; // 30 seconds
-const SLIPPAGE_BPS = 100; // 1% slippage tolerance
+const SLIPPAGE_BPS = 500; // 5% slippage tolerance
 
 // Position tracking
 const positions = new Map();
@@ -404,9 +404,9 @@ async function monitorPositions(jupiterService, dexService, connection) {
 async function processTokens(finalTokens, jupiterService, dexService, connection) {
   console.log(`Processing ${finalTokens.length} tokens for potential trades...`);
 
-  // Skip if maximum positions reached
+  // Skip if we already have a position (only allowing one at a time)
   if (positions.size >= MAX_POSITIONS) {
-    console.log(`Maximum positions (${MAX_POSITIONS}) reached. Skipping new entries.`);
+    console.log(`Already have a position. Only one position allowed at a time.`);
     return;
   }
 
@@ -431,9 +431,9 @@ async function processTokens(finalTokens, jupiterService, dexService, connection
 
         console.log(`Bought ${token.symbol} at $${token.priceUsd}`);
 
-        // Exit if maximum positions reached
+        // Exit since we now have a position (only allowing one at a time)
         if (positions.size >= MAX_POSITIONS) {
-          console.log(`Maximum positions (${MAX_POSITIONS}) reached.`);
+          console.log(`Position acquired. Only one position allowed at a time.`);
           break;
         }
       }

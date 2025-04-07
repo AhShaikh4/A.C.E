@@ -61,7 +61,7 @@ The bot implements a momentum-driven strategy optimized for memecoins:
 Key parameters can be adjusted in `trading.js`:
 
 - `BUY_AMOUNT_LAMPORTS`: Amount of SOL to use per trade (default: 0.2 SOL)
-- `MAX_POSITIONS`: Maximum number of concurrent positions (default: 4)
+- `MAX_POSITIONS`: Maximum number of concurrent positions (default: 1)
 - `PRICE_CHECK_INTERVAL`: How often to check prices (default: 30 seconds)
 - `SLIPPAGE_BPS`: Slippage tolerance in basis points (default: 100 = 1%)
 
