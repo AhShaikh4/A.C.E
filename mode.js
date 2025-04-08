@@ -1,3 +1,5 @@
+//mode.js
+
 const inquirer = require('inquirer');
 
 // Constants

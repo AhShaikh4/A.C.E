@@ -1,3 +1,5 @@
+//TA.js
+
 const fs = require('fs').promises;
 const axios = require('axios');
 const technicalindicators = require('technicalindicators');

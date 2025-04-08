@@ -1,3 +1,5 @@
+//utils.js
+
 /**
  * Simulation utilities for the Solana memecoin trading bot
  * Contains helper functions for logging and statistics tracking

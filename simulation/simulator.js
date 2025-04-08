@@ -1,3 +1,5 @@
+//simulator.js
+
 /**
  * Solana Memecoin Trading Bot Simulator
  *

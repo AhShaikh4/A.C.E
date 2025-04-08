@@ -1,3 +1,5 @@
+//trading.js
+
 const fs = require('fs').promises;
 const { PublicKey, Connection } = require('@solana/web3.js');
 const { initializeConnection, initializeWallet, checkWalletBalance } = require('./wallet');

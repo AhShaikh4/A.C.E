@@ -1,3 +1,5 @@
+//wallet.js
+
 require('dotenv').config();
 const { Connection, PublicKey, Keypair, clusterApiUrl } = require('@solana/web3.js');
 const bs58 = require('bs58');
