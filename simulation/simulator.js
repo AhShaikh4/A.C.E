@@ -451,7 +451,16 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
     if (ohlcvData && ohlcvData.length > 0) {
       // Use the last 20 candles (or all available if less) for indicator calculation
       const recentOhlcv = ohlcvData.slice(-20);
-      indicators = calculateIndicators(recentOhlcv);
+
+      // For position monitoring, we need all indicators for trading decisions
+      // This ensures we have all the data needed for sell criteria evaluation
+      indicators = calculateIndicators(recentOhlcv, {
+        calculateBasic: true,
+        calculateIntermediate: true,
+        calculateAdvanced: true,
+        calculateVolume: true
+      });
+
       console.log(`Recalculated indicators for ${symbol}`);
     } else {
       console.warn(`Insufficient OHLCV data for ${symbol}, using fallback indicators`);
@@ -465,7 +474,14 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
           lower: pairData.priceUsd * 0.95
         },
         atr: pairData.priceUsd * 0.025, // 2.5% of price as ATR
-        macd: { MACD: 0, signal: 0, histogram: 0 }
+        macd: { MACD: 0, signal: 0, histogram: 0 },
+        ichimoku: {
+          tenkanSen: pairData.priceUsd,
+          kijunSen: pairData.priceUsd,
+          senkouSpanA: pairData.priceUsd,
+          senkouSpanB: pairData.priceUsd,
+          chikouSpan: pairData.priceUsd
+        }
       };
     }
 

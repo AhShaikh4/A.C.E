@@ -197,45 +197,95 @@ const calculateIchimoku = (highs, lows, closes) => {
   };
 };
 
-const calculateIndicators = (ohlcv) => {
+const calculateIndicators = (ohlcv, options = {}) => {
+  // Default options
+  const {
+    calculateBasic = true,     // Basic indicators (SMA, EMA, RSI)
+    calculateIntermediate = true, // Intermediate indicators (MACD, Bollinger)
+    calculateAdvanced = true,  // Advanced indicators (Ichimoku, Keltner)
+    calculateVolume = true     // Volume-based indicators (OBV, MFI, etc.)
+  } = options;
+
   if (!ohlcv || ohlcv.length < 1) {
     console.warn(`Insufficient OHLCV data: ${ohlcv?.length || 0} candles`);
     return {};
   }
+
+  // Extract data once to avoid repeated mapping
   const closes = ohlcv.map(c => c.close);
   const highs = ohlcv.map(c => c.high);
   const lows = ohlcv.map(c => c.low);
   const volumes = ohlcv.map(c => c.volume);
   const period = Math.min(20, ohlcv.length);
-  return {
-    sma: SMA.calculate({ period, values: closes }).slice(-1)[0] || 0,
-    ema: EMA.calculate({ period, values: closes }).slice(-1)[0] || 0,
-    dema: ohlcv.length >= period * 2 ? calculateDEMA(closes, period) : 0,
-    tema: ohlcv.length >= period * 3 ? calculateTEMA(closes, period) : 0,
-    trima: calculateTRIMA(closes, period),
-    vwma: calculateVWMA(closes, volumes, period),
-    macd: ohlcv.length >= 26 ? MACD.calculate({ values: closes, fastPeriod: Math.min(12, period), slowPeriod: Math.min(26, period), signalPeriod: Math.min(9, period) }).slice(-1)[0] : { MACD: 0, signal: 0, histogram: 0 },
-    psar: PSAR.calculate({ high: highs, low: lows, step: 0.02, max: 0.2 }).slice(-1)[0] || 0,
-    vortex: ohlcv.length >= 15 ? calculateVortex(highs, lows, closes, Math.min(14, period)) : { VIPlus: 0, VIMinus: 0 },
-    cci: ohlcv.length >= period ? CCI.calculate({ high: highs, low: lows, close: closes, period }).slice(-1)[0] : 0,
-    rsi: ohlcv.length >= 14 ? RSI.calculate({ values: closes, period: Math.min(14, period) }).slice(-1)[0] : 0,
-    stochastic: ohlcv.length >= 14 ? Stochastic.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period), signalPeriod: Math.min(3, period) }).slice(-1)[0] : { k: 0, d: 0 },
-    williamsR: ohlcv.length >= 14 ? WilliamsR.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period) }).slice(-1)[0] : 0,
-    roc: ohlcv.length >= 12 ? ROC.calculate({ values: closes, period: Math.min(12, period) }).slice(-1)[0] : 0,
-    ppo: ohlcv.length >= 26 ? calculatePPO(closes, Math.min(12, period), Math.min(26, period), Math.min(9, period)) : { PPO: 0, signal: 0 },
-    awesome: ohlcv.length >= 34 ? AwesomeOscillator.calculate({ high: highs, low: lows, fastPeriod: Math.min(5, period), slowPeriod: Math.min(34, period) }).slice(-1)[0] : 0,
-    bollinger: BollingerBands.calculate({ period, stdDev: 2, values: closes }).slice(-1)[0] || { upper: 0, middle: 0, lower: 0 },
-    atr: ohlcv.length >= 14 ? ATR.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period) }).slice(-1)[0] : 0,
-    trueRange: TrueRange.calculate({ high: highs, low: lows, close: closes }).slice(-1)[0] || 0,
-    keltner: ohlcv.length >= period ? calculateKeltnerChannel(highs, lows, closes, period, 2) : { upper: 0, middle: 0, lower: 0 },
-    obv: OBV.calculate({ close: closes, volume: volumes }).slice(-1)[0] || 0,
-    mfi: ohlcv.length >= 14 ? MFI.calculate({ high: highs, low: lows, close: closes, volume: volumes, period: Math.min(14, period) }).slice(-1)[0] : 0,
-    ad: calculateAD(highs, lows, closes, volumes),
-    cmf: ohlcv.length >= period ? calculateCMF(highs, lows, closes, volumes, period) : 0,
-    vpt: ohlcv.length >= 2 ? calculateVPT(closes, volumes) : 0,
-    vwap: VWAP.calculate({ high: highs, low: lows, close: closes, volume: volumes }).slice(-1)[0] || 0,
-    ichimoku: calculateIchimoku(highs, lows, closes)
-  };
+
+  // Initialize result object
+  const result = {};
+
+  // Calculate basic indicators (always calculated as they're fast and used frequently)
+  if (calculateBasic) {
+    // Basic indicators - fast to calculate and frequently used in decision making
+    result.sma = SMA.calculate({ period, values: closes }).slice(-1)[0] || 0;
+    result.ema = EMA.calculate({ period, values: closes }).slice(-1)[0] || 0;
+    result.trima = calculateTRIMA(closes, period);
+
+    // These are used in trading decisions frequently
+    result.rsi = ohlcv.length >= 14 ? RSI.calculate({ values: closes, period: Math.min(14, period) }).slice(-1)[0] : 0;
+    result.trueRange = TrueRange.calculate({ high: highs, low: lows, close: closes }).slice(-1)[0] || 0;
+    result.atr = ohlcv.length >= 14 ? ATR.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period) }).slice(-1)[0] : 0;
+  }
+
+  // Calculate intermediate indicators (moderately complex)
+  if (calculateIntermediate && ohlcv.length >= 14) {
+    // Moving averages and derivatives
+    result.dema = ohlcv.length >= period * 2 ? calculateDEMA(closes, period) : 0;
+    result.tema = ohlcv.length >= period * 3 ? calculateTEMA(closes, period) : 0;
+    result.vwma = calculateVWMA(closes, volumes, period);
+
+    // Momentum indicators
+    result.macd = ohlcv.length >= 26 ? MACD.calculate({ values: closes, fastPeriod: Math.min(12, period), slowPeriod: Math.min(26, period), signalPeriod: Math.min(9, period) }).slice(-1)[0] : { MACD: 0, signal: 0, histogram: 0 };
+    result.stochastic = ohlcv.length >= 14 ? Stochastic.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period), signalPeriod: Math.min(3, period) }).slice(-1)[0] : { k: 0, d: 0 };
+    result.williamsR = ohlcv.length >= 14 ? WilliamsR.calculate({ high: highs, low: lows, close: closes, period: Math.min(14, period) }).slice(-1)[0] : 0;
+    result.roc = ohlcv.length >= 12 ? ROC.calculate({ values: closes, period: Math.min(12, period) }).slice(-1)[0] : 0;
+
+    // Volatility indicators
+    result.bollinger = BollingerBands.calculate({ period, stdDev: 2, values: closes }).slice(-1)[0] || { upper: 0, middle: 0, lower: 0 };
+  }
+
+  // Calculate advanced indicators (more complex, computationally intensive)
+  if (calculateAdvanced && ohlcv.length >= 26) {
+    result.psar = PSAR.calculate({ high: highs, low: lows, step: 0.02, max: 0.2 }).slice(-1)[0] || 0;
+    result.vortex = ohlcv.length >= 15 ? calculateVortex(highs, lows, closes, Math.min(14, period)) : { VIPlus: 0, VIMinus: 0 };
+    result.cci = ohlcv.length >= period ? CCI.calculate({ high: highs, low: lows, close: closes, period }).slice(-1)[0] : 0;
+    result.ppo = ohlcv.length >= 26 ? calculatePPO(closes, Math.min(12, period), Math.min(26, period), Math.min(9, period)) : { PPO: 0, signal: 0 };
+    result.awesome = ohlcv.length >= 34 ? AwesomeOscillator.calculate({ high: highs, low: lows, fastPeriod: Math.min(5, period), slowPeriod: Math.min(34, period) }).slice(-1)[0] : 0;
+    result.keltner = ohlcv.length >= period ? calculateKeltnerChannel(highs, lows, closes, period, 2) : { upper: 0, middle: 0, lower: 0 };
+
+    // Ichimoku is one of the most computationally intensive indicators
+    // Only calculate if we have enough data
+    if (ohlcv.length >= 52) {
+      result.ichimoku = calculateIchimoku(highs, lows, closes);
+    } else {
+      result.ichimoku = {
+        tenkanSen: 0,
+        kijunSen: 0,
+        senkouSpanA: 0,
+        senkouSpanB: 0,
+        chikouSpan: 0
+      };
+    }
+  }
+
+  // Calculate volume-based indicators
+  if (calculateVolume && volumes.length > 0) {
+    result.obv = OBV.calculate({ close: closes, volume: volumes }).slice(-1)[0] || 0;
+    result.mfi = ohlcv.length >= 14 ? MFI.calculate({ high: highs, low: lows, close: closes, volume: volumes, period: Math.min(14, period) }).slice(-1)[0] : 0;
+    result.ad = calculateAD(highs, lows, closes, volumes);
+    result.cmf = ohlcv.length >= period ? calculateCMF(highs, lows, closes, volumes, period) : 0;
+    result.vpt = ohlcv.length >= 2 ? calculateVPT(closes, volumes) : 0;
+    result.vwap = VWAP.calculate({ high: highs, low: lows, close: closes, volume: volumes }).slice(-1)[0] || 0;
+  }
+
+  return result;
 };
 
 const normalizeGeckoToken = async (pool, boostedSet, dexService, skipDetailedData = false) => {
@@ -713,17 +763,36 @@ async function performTA(dexServiceParam) {
       // Fetch OHLCV data (1h only for efficiency)
       const ohlcvData = await fetchOHLCV(network, token.poolAddress, token.symbol, 'hour', 1);
 
-      // Calculate indicators
-      const indicators = { hour: calculateIndicators(ohlcvData) };
+      // For initial scoring, we only need basic and intermediate indicators
+      // This significantly reduces computation time
+      const indicators = {
+        hour: calculateIndicators(ohlcvData, {
+          calculateBasic: true,
+          calculateIntermediate: true,
+          calculateAdvanced: false,  // Skip advanced indicators for initial scoring
+          calculateVolume: true      // Volume indicators are important for scoring
+        })
+      };
 
       // Calculate score
       const scoreResult = calculateScore({ ...token, indicators });
 
       // Keep if normalized score > 15 (equivalent to raw score > 30 with MAX_THEORETICAL_SCORE = 200)
       if (scoreResult.normalized > 15) {
+        // For tokens that pass initial scoring, calculate the full set of indicators
+        // This ensures we have all indicators available for trading decisions
+        const fullIndicators = {
+          hour: calculateIndicators(ohlcvData, {
+            calculateBasic: true,
+            calculateIntermediate: true,
+            calculateAdvanced: true,
+            calculateVolume: true
+          })
+        };
+
         analyzedTokens.push({
           ...token,
-          indicators,
+          indicators: fullIndicators,  // Use the complete set of indicators
           score: scoreResult.normalized,
           rawScore: scoreResult.raw,
           ohlcv: { hour: ohlcvData } // Only keep the hour timeframe data
@@ -781,12 +850,55 @@ async function performTA(dexServiceParam) {
   // Fallback: If Moralis validation fails (API errors), use top tokens from TA
   if (finalTokens.length === 0 && topAnalyzedTokens.length > 0) {
     console.log('WARNING: Moralis validation failed. Using top tokens from technical analysis as fallback.');
-    finalTokens = topAnalyzedTokens.slice(0, 3).map(token => ({
-      ...token,
-      holders: { totalHolders: 0 },
-      historicalHolders: { result: [] },
-      snipers: { result: [] },
-      holderChange24h: 0
+
+    // Take top 3 tokens and ensure they have all necessary indicators
+    finalTokens = await Promise.all(topAnalyzedTokens.slice(0, 3).map(async token => {
+      // Ensure we have all the indicators needed for trading decisions
+      // This is a safety check in case some indicators were skipped during optimization
+      const missingAdvancedIndicators = !token.indicators.hour.ichimoku || !token.indicators.hour.keltner;
+
+      if (missingAdvancedIndicators) {
+        try {
+          // Recalculate with all indicators if any advanced ones are missing
+          const ohlcvData = token.ohlcv.hour;
+          const fullIndicators = {
+            hour: calculateIndicators(ohlcvData, {
+              calculateBasic: true,
+              calculateIntermediate: true,
+              calculateAdvanced: true,
+              calculateVolume: true
+            })
+          };
+
+          return {
+            ...token,
+            indicators: fullIndicators,
+            holders: { totalHolders: 0 },
+            historicalHolders: { result: [] },
+            snipers: { result: [] },
+            holderChange24h: 0
+          };
+        } catch (error) {
+          console.error(`Error recalculating indicators for ${token.symbol}: ${error.message}`);
+          // Return the token as is if recalculation fails
+          return {
+            ...token,
+            holders: { totalHolders: 0 },
+            historicalHolders: { result: [] },
+            snipers: { result: [] },
+            holderChange24h: 0
+          };
+        }
+      } else {
+        // All indicators are already present
+        return {
+          ...token,
+          holders: { totalHolders: 0 },
+          historicalHolders: { result: [] },
+          snipers: { result: [] },
+          holderChange24h: 0
+        };
+      }
     }));
   }
 
