@@ -441,10 +441,10 @@ const analyzeGeckoPool = async (pool, _network, boostedSet, dexService, skipDeta
   }
 };
 
-async function performTA() {
+async function performTA(dexServiceParam) {
   console.log('Starting advanced TA-based Solana memecoin analysis with tiered filtering...');
   const network = 'solana';
-  const dexService = new DexScreenerService();
+  const dexService = dexServiceParam || new DexScreenerService();
 
   // Step 1: Fetch DexScreener Boosted Tokens
   console.log('Step 1: Fetching and filtering boosted tokens from DexScreener...');
@@ -879,7 +879,10 @@ async function main() {
   }
 }
 
-main();
+// Only run main() if this file is executed directly, not when imported
+if (require.main === module) {
+  main();
+}
 
 // Export functions for use in trading.js and simulation
 module.exports = { fetchOHLCV, calculateIndicators, performTA };

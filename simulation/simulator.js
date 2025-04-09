@@ -666,6 +666,7 @@ async function fetchAndAnalyzeTokens(dexService) {
   while (attempt <= MAX_RETRIES) {
     try {
       console.log(`Attempt ${attempt}/${MAX_RETRIES}: Fetching token data...`);
+      // Pass the dexService instance to performTA to avoid creating a new one
       const tokens = await performTA(dexService);
       console.log(`Found ${tokens.length} tokens after analysis`);
       return tokens.slice(0, Math.min(tokens.length, 3));
