@@ -512,17 +512,7 @@ async function performTA(dexServiceParam) {
     return { ...token, pairData: pair };
   });
 
-  // Debug: Log some sample tokens with their pair data
-  if (enrichedBoostedTokens.length > 0) {
-    const sample = enrichedBoostedTokens[0];
-    console.log(`Sample token: ${sample.tokenAddress}`);
-    console.log(`  Pair data available: ${Object.keys(sample.pairData).length > 0 ? 'Yes' : 'No'}`);
-    if (Object.keys(sample.pairData).length > 0) {
-      console.log(`  Price Change 24h: ${sample.pairData.priceChange?.h24 || 'N/A'}`);
-      console.log(`  Liquidity USD: ${sample.pairData.liquidity?.usd || 'N/A'}`);
-      console.log(`  Volume 24h: ${sample.pairData.volume?.h24 || 'N/A'}`);
-    }
-  }
+  // No need to log sample tokens - removed debug output
 
   // Filter boosted tokens by criteria with looser thresholds
   const boostedTokens = enrichedBoostedTokens
@@ -532,9 +522,7 @@ async function performTA(dexServiceParam) {
       const liquidityUsd = pair.liquidity?.usd || 0;
       const volume24h = pair.volume?.h24 || 0;
 
-      // Log filtering criteria for debugging
-      console.log(`Filtering ${token.tokenAddress}: Price Change 24h: ${priceChange24h}, Liquidity: ${liquidityUsd}, Volume 24h: ${volume24h}`);
-
+      // Skip logging individual token filtering
       return (
         priceChange24h > -20 && // Allow more downtrend
         liquidityUsd >= 20000 && // Increased minimum liquidity
