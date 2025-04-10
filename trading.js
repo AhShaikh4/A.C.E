@@ -10,12 +10,15 @@ const { getTokenHoldersHistorical } = require('./src/services/morali');
 // Import functions from TA.js
 const { fetchOHLCV, calculateIndicators } = require('./TA');
 
+// Import config
+const { BOT_CONFIG } = require('./config');
+
 // Constants
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
-const BUY_AMOUNT_LAMPORTS = 200000000; // 0.2 SOL in lamports
-const MAX_POSITIONS = 1; // Maximum number of concurrent positions (limited to 1)
+const BUY_AMOUNT_LAMPORTS = BOT_CONFIG.BUY_AMOUNT_SOL * 1000000000; // Convert SOL to lamports
+const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS || 1; // Maximum number of concurrent positions
 const PRICE_CHECK_INTERVAL = 30000; // 30 seconds
-const SLIPPAGE_BPS = 500; // 5% slippage tolerance
+const SLIPPAGE_BPS = BOT_CONFIG.SLIPPAGE_BPS || 500; // Slippage tolerance
 
 // Position tracking
 const positions = new Map();
@@ -35,8 +38,21 @@ const CACHE_TTL = 60000; // 1 minute cache TTL
 function meetsBuyCriteria(token) {
   const indicators = token.indicators.hour || {};
 
+  // Debug logging
+  console.log(`Evaluating buy criteria for ${token.symbol}:`);
+  console.log(`- Score: ${token.score} (needs > 60): ${token.score > 60}`);
+  console.log(`- Price Change 5m: ${token.priceChange.m5}% (needs > 2): ${token.priceChange.m5 > 2}`);
+  console.log(`- Price Change 1h: ${token.priceChange.h1}% (needs > 0): ${token.priceChange.h1 > 0}`);
+  console.log(`- MACD: ${indicators.macd?.MACD}, Signal: ${indicators.macd?.signal}, Histogram: ${indicators.macd?.histogram}`);
+  console.log(`- MACD Bullish: ${indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0}`);
+  console.log(`- RSI: ${indicators.rsi} (needs < 70): ${indicators.rsi < 70}`);
+  console.log(`- Price vs Bollinger Upper: ${token.priceUsd} vs ${indicators.bollinger?.upper}: ${token.priceUsd > indicators.bollinger?.upper}`);
+  console.log(`- Tenkan-sen vs Kijun-sen: ${indicators.ichimoku?.tenkanSen} vs ${indicators.ichimoku?.kijunSen}: ${indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen}`);
+  console.log(`- Buy/Sell Ratio 5m: ${token.txns?.m5?.buys}/${token.txns?.m5?.sells} = ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1)} (needs > 1.2): ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > 1.2}`);
+  console.log(`- Holder Change 24h: ${token.holderChange24h} (needs >= 0): ${token.holderChange24h === undefined || token.holderChange24h >= 0}`);
+
   // Check all required buy conditions
-  return (
+  const result = (
     token.score > 60 && // Score above 60 (out of 100)
     token.priceChange.m5 > 2 && token.priceChange.h1 > 0 && // Recent positive momentum
     indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0 && // MACD bullish
@@ -44,8 +60,11 @@ function meetsBuyCriteria(token) {
     (token.priceUsd > indicators.bollinger?.upper || // Price above upper Bollinger Band
      indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen) && // Tenkan-sen above Kijun-sen
     token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > 1.2 && // Recent buy pressure
-    token.holderChange24h > 0 // Positive holder growth
+    (token.holderChange24h === undefined || token.holderChange24h >= 0) // Positive holder growth or missing data
   );
+
+  console.log(`Buy criteria met: ${result}`);
+  return result;
 }
 
 /**
