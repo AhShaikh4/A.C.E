@@ -6,26 +6,32 @@
  * This module simulates the trading strategy using real token data from TA.js
  * and real price updates from DexScreener, while simulating wallet interactions
  * and trade executions. It fetches new tokens only when there are no open positions.
+ *
+ * Updated to work with the new architecture that separates TA.js, trading.js, and main.js
  */
 
 const dotenv = require('dotenv');
+const fs = require('fs').promises;
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
 
-// Import from existing codebase without modifying it
+// Import from existing codebase
 const { performTA, fetchOHLCV, calculateIndicators } = require('../TA');
+const { meetsBuyCriteria, meetsSellCriteria } = require('../trading');
 const { getTokenHoldersHistorical } = require('../src/services/morali');
 const { DexScreenerService } = require('../src/services/dexscreener');
+const { BOT_CONFIG } = require('../config');
 
 // Import simulation utilities
 const { logTrade, updateStats, logSimulationStats, generateRandomString, withFallback, ensureLogDirectory, getESTTimestamp } = require('./utils');
 
-// Constants (matching trading.js)
+// Use constants from config.js
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
-const BUY_AMOUNT_LAMPORTS = 200000000; // 0.2 SOL in lamports
-const MAX_POSITIONS = 1; // Maximum number of concurrent positions
-const PRICE_CHECK_INTERVAL = 30000; // 30 seconds for position monitoring
+const BUY_AMOUNT_LAMPORTS = BOT_CONFIG.BUY_AMOUNT_SOL * 1e9; // Convert SOL to lamports
+const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS;
+const PRICE_CHECK_INTERVAL = BOT_CONFIG.POSITION_CHECK_INTERVAL_SECONDS * 1000; // Convert seconds to milliseconds
 const CHECK_INTERVAL = 60000; // 1 minute for checking positions and fetching tokens
 // Slippage tolerance is handled internally in the simulation
 
@@ -155,9 +161,9 @@ function simulateSwap(fromMint, toMint, amount, price = 0) {
 /**
  * Check if a token meets the buy criteria
  * @param {Object} token - Token data from finalTokens
- * @returns {Object} - Result with decision and debug info
+ * @returns {boolean} - Whether the token meets buy criteria
  */
-function meetsBuyCriteria(token) {
+function simulationMeetsBuyCriteria(token) {
   console.log(`\n=== Evaluating Buy Criteria for ${token.symbol} ===`);
   console.log(`Score: ${token.score}/100`);
 
@@ -196,49 +202,35 @@ function meetsBuyCriteria(token) {
   // Holder change
   console.log(`Holder Change 24h: ${token.holderChange24h?.toFixed(2)}%`);
 
-  // RELAXED CRITERIA - Check conditions with more lenient thresholds
-  // Each condition is checked separately for better debugging
+  // Use the imported meetsBuyCriteria function from trading.js
+  // This ensures we're using the same criteria as the real trading system
+  const decision = meetsBuyCriteria(token);
 
-  // 1. Score check - Keep this strict as it's a good overall indicator
-  const scoreCheck = token.score > 60;
-  console.log(`Score > 60: ${scoreCheck ? '✅ PASS' : '❌ FAIL'}`);
+  // For simulation, we can use more relaxed criteria if needed
+  // This is useful for testing the simulation with more trades
+  const useRelaxedCriteria = false; // Set to true to use relaxed criteria
 
-  // 2. Price momentum - Relaxed to allow for smaller or even slightly negative 5m changes
-  const momentumCheck = token.priceChange?.m5 > -5 && token.priceChange?.h1 > -10;
-  console.log(`Price momentum check: ${momentumCheck ? '✅ PASS' : '❌ FAIL'}`);
+  if (useRelaxedCriteria && !decision) {
+    // RELAXED CRITERIA for simulation only
+    // 1. Score check - Keep this strict as it's a good overall indicator
+    const scoreCheck = token.score > 50; // Relaxed from 60 to 50
 
-  // 3. MACD check - Relaxed to be optional if other indicators are strong
-  const macdCheck = !indicators.macd || // Skip check if MACD is missing
-                   (indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0);
-  console.log(`MACD bullish check: ${macdCheck ? '✅ PASS' : '❌ FAIL'}`);
+    // 2. Price momentum - Relaxed to allow for smaller or even slightly negative 5m changes
+    const momentumCheck = token.priceChange?.m5 > -5 && token.priceChange?.h1 > -10;
 
-  // 4. RSI check - Keep this to avoid overbought conditions
-  const rsiCheck = !indicators.rsi || indicators.rsi < 80; // Relaxed from 70 to 80
-  console.log(`RSI < 80 check: ${rsiCheck ? '✅ PASS' : '❌ FAIL'}`);
+    // 3. RSI check - Keep this to avoid overbought conditions
+    const rsiCheck = !indicators.rsi || indicators.rsi < 80; // Relaxed from 70 to 80
 
-  // 5. Technical indicator check - Make this optional
-  const techCheck = !indicators.bollinger || !indicators.ichimoku || // Skip if indicators missing
-                   token.priceUsd > indicators.bollinger?.lower || // Price above lower band (relaxed)
-                   indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen * 0.9; // Relaxed ratio
-  console.log(`Technical indicator check: ${techCheck ? '✅ PASS' : '❌ FAIL'}`);
+    // Final decision - Require score check plus momentum and RSI
+    const relaxedDecision = scoreCheck && momentumCheck && rsiCheck;
 
-  // 6. Transaction ratio - Relaxed to allow more balanced buy/sell
-  const txnCheck = !token.txns?.m5 || // Skip if transaction data missing
-                  token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > 0.8; // Relaxed from 1.2 to 0.8
-  console.log(`Transaction ratio check: ${txnCheck ? '✅ PASS' : '❌ FAIL'}`);
+    if (relaxedDecision) {
+      console.log(`FINAL DECISION (RELAXED): ✅ BUY (Using relaxed simulation criteria)`);
+      return relaxedDecision;
+    }
+  }
 
-  // 7. Holder change - Make this optional since Moralis API often fails
-  const holderCheck = token.holderChange24h === undefined || // Skip if holder data missing
-                     token.holderChange24h >= -5; // Allow slight decrease
-  console.log(`Holder change check: ${holderCheck ? '✅ PASS' : '❌ FAIL'}`);
-
-  // Final decision - Require score check plus at least 4 of the 6 other checks
-  const otherChecks = [momentumCheck, macdCheck, rsiCheck, techCheck, txnCheck, holderCheck];
-  const passedChecks = otherChecks.filter(check => check).length;
-
-  const decision = scoreCheck && passedChecks >= 4;
-  console.log(`FINAL DECISION: ${decision ? '✅ BUY' : '❌ SKIP'} (Passed ${passedChecks}/6 additional checks)`);
-
+  console.log(`FINAL DECISION: ${decision ? '✅ BUY' : '❌ SKIP'} (Using trading.js criteria)`);
   return decision;
 }
 
@@ -248,43 +240,30 @@ function meetsBuyCriteria(token) {
  * @param {Object} currentData - Current token data
  * @returns {Object} - Sell decision with reason
  */
-function meetsSellCriteria(position, currentData) {
-  const indicators = currentData.indicators.hour || {};
+function simulationMeetsSellCriteria(position, currentData) {
+  // Log current position status for debugging
   const currentPrice = currentData.priceUsd;
   const entryPrice = position.entryPrice;
   const profitPercent = (currentPrice - entryPrice) / entryPrice;
   const highestPrice = position.highestPrice;
 
-  // Use ATR from indicators or fallback to a percentage of entry price
-  const atr = indicators.atr || (position.entryPrice * 0.025); // Fallback to 2.5% of entry price
-  const trailingStopPrice = highestPrice - (2.5 * atr);
+  console.log(`\n=== Evaluating Sell Criteria for ${position.symbol} ===`);
+  console.log(`Current Price: $${currentPrice.toFixed(8)}`);
+  console.log(`Entry Price: $${entryPrice.toFixed(8)}`);
+  console.log(`Profit/Loss: ${(profitPercent * 100).toFixed(2)}%`);
+  console.log(`Highest Price: $${highestPrice.toFixed(8)}`);
 
-  // Check each sell condition
-  if (profitPercent >= 0.15) {
-    return { sell: true, reason: 'Profit target reached (15%)' };
+  // Use the imported meetsSellCriteria function from trading.js
+  // This ensures we're using the same criteria as the real trading system
+  const sellDecision = meetsSellCriteria(position, currentData);
+
+  if (sellDecision.sell) {
+    console.log(`SELL DECISION: ✅ SELL (${sellDecision.reason})`);
+  } else {
+    console.log(`SELL DECISION: ❌ HOLD (No sell criteria met)`);
   }
 
-  if (profitPercent <= -0.07) {
-    return { sell: true, reason: 'Stop loss triggered (-7%)' };
-  }
-
-  if (currentPrice < trailingStopPrice && highestPrice > entryPrice) {
-    return { sell: true, reason: 'Trailing stop triggered' };
-  }
-
-  if (indicators.rsi > 80) {
-    return { sell: true, reason: 'RSI overbought (>80)' };
-  }
-
-  if (currentPrice < indicators.bollinger?.middle) {
-    return { sell: true, reason: 'Price below Bollinger middle band' };
-  }
-
-  if (currentData.holderChange24h < -5) {
-    return { sell: true, reason: 'Significant holder decrease' };
-  }
-
-  return { sell: false };
+  return sellDecision;
 }
 
 /**
@@ -562,7 +541,7 @@ async function monitorPositions(dexService) {
       const profitPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
       console.log(`Monitoring ${position.symbol}: Current price $${currentPrice.toFixed(8)}, ` +
                   `P/L: ${profitPercent.toFixed(2)}%, Highest: $${updatedPosition.highestPrice.toFixed(8)}`);
-      const sellDecision = meetsSellCriteria(updatedPosition, currentData);
+      const sellDecision = simulationMeetsSellCriteria(updatedPosition, currentData);
       if (sellDecision.sell) {
         console.log(`Sell triggered for ${position.symbol}: ${sellDecision.reason}`);
         const sellSuccess = await executeSell(updatedPosition, currentData, sellDecision.reason);
@@ -602,7 +581,7 @@ async function processTokens(tokens) {
     }
 
     // Check buy criteria
-    if (meetsBuyCriteria(token)) {
+    if (simulationMeetsBuyCriteria(token)) {
       console.log(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
 
       // Execute buy (position is added to positions Map inside executeBuy)
@@ -624,8 +603,9 @@ async function processTokens(tokens) {
  * Execute trading strategy with simulated wallet
  * @param {Array} tokens - Tokens from TA.js
  * @param {DexScreenerService} dexService - DexScreener service instance needed for monitoring
+ * @returns {Object} - Status of trading operations
  */
-async function executeTradingStrategy(tokens, dexService) {
+async function simulateTrading(tokens, dexService) {
   try {
     console.log('Initializing trading strategy simulation...');
 
@@ -635,7 +615,7 @@ async function executeTradingStrategy(tokens, dexService) {
     // Check if wallet has sufficient balance
     if (!walletInfo.hasMinimumBalance) {
       console.error(`Insufficient wallet balance for trading: ${walletInfo.solBalance} SOL`);
-      return;
+      return { success: false, reason: 'insufficient_balance' };
     }
 
     // Process tokens for potential trades
@@ -650,13 +630,26 @@ async function executeTradingStrategy(tokens, dexService) {
     }
 
     console.log('Trading strategy simulation initialized successfully.');
+
+    return {
+      success: true,
+      positionsOpened: positions.size,
+      positions: Array.from(positions.entries()).map(([address, pos]) => ({
+        symbol: pos.symbol,
+        entryPrice: pos.entryPrice,
+        amount: pos.amount,
+        entryTime: new Date(pos.entryTime).toISOString()
+      }))
+    };
   } catch (error) {
     // Handle specific error messages
     if (error.message.includes('Environment variables not loaded')) {
       console.log('Environment variables error detected. This is expected in simulation mode.');
       console.log('Continuing with simulation using mock wallet...');
+      return { success: true, message: 'Continuing with mock wallet' };
     } else {
       console.error(`Trading strategy simulation failed: ${error.message}`);
+      return { success: false, reason: 'simulation_failed', error: error.message };
     }
   }
 }
@@ -836,7 +829,8 @@ async function runSimulation() {
         console.log(`Using ${finalTokens.length} tokens for simulation`);
 
         // Execute trading strategy with tokens
-        await executeTradingStrategy(finalTokens, dexService);
+        const tradingResult = await simulateTrading(finalTokens, dexService);
+        console.log(`Trading simulation result: ${tradingResult.success ? 'Success' : 'Failed'}, Positions opened: ${tradingResult.positionsOpened || 0}`);
       } else {
         console.log(`${positions.size} open positions. Continuing monitoring...`);
         // Monitoring is handled by the monitoringInterval
@@ -856,8 +850,27 @@ async function runSimulation() {
   }
 }
 
-// Start the simulation
-console.log('Initializing simulation...');
-runSimulation().catch(error => {
-  console.error(`Simulation failed: ${error.message}`);
-});
+// Only start the simulation if this file is executed directly
+if (require.main === module) {
+  console.log('Initializing simulation...');
+  runSimulation().catch(error => {
+    console.error(`Simulation failed: ${error.message}`);
+  });
+}
+
+// Export functions for potential programmatic use
+module.exports = {
+  runSimulation,
+  simulateTrading,
+  simulationMeetsBuyCriteria,
+  simulationMeetsSellCriteria,
+  getCurrentPositions: () => Array.from(positions.entries()).map(([address, pos]) => ({
+    tokenAddress: address,
+    symbol: pos.symbol,
+    entryPrice: pos.entryPrice,
+    currentPrice: pos.currentPrice || pos.entryPrice,
+    amount: pos.amount,
+    entryTime: new Date(pos.entryTime).toISOString(),
+    profitLoss: pos.currentPrice ? ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100 : 0
+  }))
+};
