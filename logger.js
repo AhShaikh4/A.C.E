@@ -19,6 +19,25 @@ const LOG_FILES = {
   DEBUG: path.join(logDir, 'debug.log')
 };
 
+/**
+ * Clear all log files on startup
+ */
+function clearLogFiles() {
+  console.log('Clearing log files...');
+  Object.values(LOG_FILES).forEach(filePath => {
+    try {
+      // Create or overwrite the file with empty content
+      fs.writeFileSync(filePath, '', { flag: 'w' });
+    } catch (error) {
+      console.error(`Failed to clear log file ${filePath}: ${error.message}`);
+    }
+  });
+  console.log('Log files cleared successfully.');
+}
+
+// Clear log files on startup
+clearLogFiles();
+
 // Log levels
 const LOG_LEVELS = {
   DEBUG: 0,
