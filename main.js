@@ -5,7 +5,7 @@ const fs = require('fs').promises;
 const { initializeConnection, initializeWallet, checkWalletBalance, initializeMode } = require('./wallet');
 const { MODES } = require('./mode');
 const { performTA } = require('./TA');
-const { executeTradingStrategy, stopTrading, getCurrentPositions } = require('./trading');
+const trading = require('./trading');
 const { DexScreenerService } = require('./src/services/dexscreener');
 const { BOT_CONFIG } = require('./config');
 const logger = require('./logger');
@@ -71,6 +71,26 @@ async function runCycle(services) {
     const startTime = Date.now();
     logger.info(`Starting Analysis Cycle`);
 
+    // Check if we already have open positions
+    const hasOpenPositions = trading.hasOpenPositions();
+
+    // If we're in trading mode and have open positions, skip the full analysis
+    // and just monitor the existing positions
+    if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED && hasOpenPositions) {
+      logger.info('Open positions detected. Skipping full analysis and focusing on position monitoring...');
+      const result = await trading.executeTradingStrategy([], services);
+
+      if (result.success) {
+        logger.info(`Position monitoring executed successfully. Positions: ${result.positionsOpened}`);
+      } else {
+        logger.warn(`Position monitoring failed: ${result.reason}`);
+      }
+
+      const duration = Date.now() - startTime;
+      logger.info(`Analysis Cycle Completed in ${duration}ms`);
+      return [];
+    }
+
     // Perform technical analysis to find trading opportunities
     logger.info('Performing technical analysis...');
     const analyzedTokens = await performTA(services.dexService);
@@ -86,7 +106,7 @@ async function runCycle(services) {
     // Execute trading strategy if in trading mode
     if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED) {
       logger.info('Executing trading strategy...');
-      const result = await executeTradingStrategy(analyzedTokens, services);
+      const result = await trading.executeTradingStrategy(analyzedTokens, services);
 
       if (result.success) {
         logger.info(`Trading strategy executed successfully. Positions opened: ${result.positionsOpened}`);
@@ -198,11 +218,11 @@ async function stopBot() {
 
   // Stop trading activities
   try {
-    const tradingResult = await stopTrading();
+    const tradingResult = await trading.stopTrading();
     logger.info(`Trading stopped: ${tradingResult.message || 'Successfully'}`);
 
     // Get current positions before stopping
-    const positions = getCurrentPositions();
+    const positions = trading.getCurrentPositions();
     if (positions.length > 0) {
       logger.warn(`Bot stopped with ${positions.length} open positions. These will need to be managed manually.`);
     }

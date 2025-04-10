@@ -1,7 +1,7 @@
 //trading.js
 
 const fs = require('fs').promises;
-const { PublicKey, Connection } = require('@solana/web3.js');
+const { PublicKey, Connection, ParsedAccountData } = require('@solana/web3.js');
 const { initializeConnection, initializeWallet, checkWalletBalance } = require('./wallet');
 const JupiterService = require('./src/services/jupiter');
 const { DexScreenerService } = require('./src/services/dexscreener');
@@ -37,33 +37,179 @@ const CACHE_TTL = 60000; // 1 minute cache TTL
  */
 function meetsBuyCriteria(token) {
   const indicators = token.indicators.hour || {};
+  const { BUY_CRITERIA } = BOT_CONFIG;
 
-  // Debug logging
+  // Debug logging for individual criteria
   console.log(`Evaluating buy criteria for ${token.symbol}:`);
-  console.log(`- Score: ${token.score} (needs > 60): ${token.score > 60}`);
-  console.log(`- Price Change 5m: ${token.priceChange.m5}% (needs > 2): ${token.priceChange.m5 > 2}`);
-  console.log(`- Price Change 1h: ${token.priceChange.h1}% (needs > 0): ${token.priceChange.h1 > 0}`);
+  console.log(`- Score: ${token.score} (needs > ${BUY_CRITERIA.MIN_SCORE}): ${token.score > BUY_CRITERIA.MIN_SCORE}`);
+  console.log(`- Price Change 5m: ${token.priceChange.m5}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_5M}): ${token.priceChange.m5 > BUY_CRITERIA.MIN_PRICE_CHANGE_5M}`);
+  console.log(`- Price Change 1h: ${token.priceChange.h1}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_1H}): ${token.priceChange.h1 > BUY_CRITERIA.MIN_PRICE_CHANGE_1H}`);
   console.log(`- MACD: ${indicators.macd?.MACD}, Signal: ${indicators.macd?.signal}, Histogram: ${indicators.macd?.histogram}`);
   console.log(`- MACD Bullish: ${indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0}`);
-  console.log(`- RSI: ${indicators.rsi} (needs < 70): ${indicators.rsi < 70}`);
+  console.log(`- RSI: ${indicators.rsi} (needs < ${BUY_CRITERIA.MAX_RSI}): ${indicators.rsi < BUY_CRITERIA.MAX_RSI}`);
   console.log(`- Price vs Bollinger Upper: ${token.priceUsd} vs ${indicators.bollinger?.upper}: ${token.priceUsd > indicators.bollinger?.upper}`);
   console.log(`- Tenkan-sen vs Kijun-sen: ${indicators.ichimoku?.tenkanSen} vs ${indicators.ichimoku?.kijunSen}: ${indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen}`);
-  console.log(`- Buy/Sell Ratio 5m: ${token.txns?.m5?.buys}/${token.txns?.m5?.sells} = ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1)} (needs > 1.2): ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > 1.2}`);
-  console.log(`- Holder Change 24h: ${token.holderChange24h} (needs >= 0): ${token.holderChange24h === undefined || token.holderChange24h >= 0}`);
+  console.log(`- Buy/Sell Ratio 5m: ${token.txns?.m5?.buys}/${token.txns?.m5?.sells} = ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1)} (needs > ${BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}): ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}`);
+  console.log(`- Holder Change 24h: ${token.holderChange24h} (needs >= ${BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}): ${token.holderChange24h === undefined || token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}`);
 
-  // Check all required buy conditions
-  const result = (
-    token.score > 60 && // Score above 60 (out of 100)
-    token.priceChange.m5 > 2 && token.priceChange.h1 > 0 && // Recent positive momentum
-    indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0 && // MACD bullish
-    indicators.rsi < 70 && // RSI not overbought
-    (token.priceUsd > indicators.bollinger?.upper || // Price above upper Bollinger Band
-     indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen) && // Tenkan-sen above Kijun-sen
-    token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > 1.2 && // Recent buy pressure
-    (token.holderChange24h === undefined || token.holderChange24h >= 0) // Positive holder growth or missing data
-  );
+  // If scoring is disabled, use traditional AND-based criteria
+  if (!BUY_CRITERIA.SCORING_ENABLED) {
+    const result = (
+      token.score > BUY_CRITERIA.MIN_SCORE && // Score above minimum
+      token.priceChange.m5 > BUY_CRITERIA.MIN_PRICE_CHANGE_5M && token.priceChange.h1 > BUY_CRITERIA.MIN_PRICE_CHANGE_1H && // Recent positive momentum
+      indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0 && // MACD bullish
+      indicators.rsi < BUY_CRITERIA.MAX_RSI && // RSI not overbought
+      (token.priceUsd > indicators.bollinger?.upper || // Price above upper Bollinger Band
+       indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen) && // Tenkan-sen above Kijun-sen
+      token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M && // Recent buy pressure
+      (token.holderChange24h === undefined || token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H) // Positive holder growth or missing data
+    );
 
-  console.log(`Buy criteria met: ${result}`);
+    console.log(`Buy criteria met (traditional): ${result}`);
+    return result;
+  }
+
+  // Scoring-based system
+  const weights = BUY_CRITERIA.SCORE_WEIGHTS;
+  const bonus = BUY_CRITERIA.BONUS;
+  let totalScore = 0;
+  let scoreDetails = {};
+
+  // 1. Token Score (0-20 points)
+  const tokenScorePoints = token.score > BUY_CRITERIA.MIN_SCORE ?
+    weights.TOKEN_SCORE : (token.score / BUY_CRITERIA.MIN_SCORE) * weights.TOKEN_SCORE;
+  scoreDetails.tokenScore = Math.round(tokenScorePoints * 10) / 10;
+  totalScore += tokenScorePoints;
+
+  // 2. Price Momentum (0-15 points)
+  let momentumPoints = 0;
+  // 5m price change (0-7.5 points)
+  if (token.priceChange.m5 > BUY_CRITERIA.MIN_PRICE_CHANGE_5M) {
+    momentumPoints += weights.PRICE_MOMENTUM / 2;
+    // Bonus for strong 5m momentum
+    if (token.priceChange.m5 > bonus.STRONG_MOMENTUM_5M) {
+      momentumPoints += bonus.BONUS_POINTS;
+    }
+  } else if (token.priceChange.m5 > 0) {
+    // Partial points for positive but below threshold
+    momentumPoints += (token.priceChange.m5 / BUY_CRITERIA.MIN_PRICE_CHANGE_5M) * (weights.PRICE_MOMENTUM / 2);
+  }
+
+  // 1h price change (0-7.5 points)
+  if (token.priceChange.h1 > BUY_CRITERIA.MIN_PRICE_CHANGE_1H) {
+    momentumPoints += weights.PRICE_MOMENTUM / 2;
+  } else if (token.priceChange.h1 > -2) { // Allow slightly negative 1h if not too bad
+    // Scale from -2% to 0%: -2% = 0 points, 0% = half points
+    momentumPoints += ((token.priceChange.h1 + 2) / 2) * (weights.PRICE_MOMENTUM / 4);
+  }
+
+  scoreDetails.momentum = Math.round(momentumPoints * 10) / 10;
+  totalScore += momentumPoints;
+
+  // 3. MACD (0-15 points)
+  let macdPoints = 0;
+  if (indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0) {
+    macdPoints = weights.MACD;
+    // Bonus for strong histogram
+    if (indicators.macd?.histogram > 0.00001) { // Adjust threshold as needed
+      macdPoints += bonus.BONUS_POINTS / 2;
+    }
+  } else if (indicators.macd?.histogram > 0) {
+    // Partial points for positive histogram even if MACD < signal
+    macdPoints = weights.MACD / 2;
+  } else if (indicators.macd?.MACD > indicators.macd?.signal) {
+    // Partial points for MACD > signal even if histogram negative
+    macdPoints = weights.MACD / 3;
+  }
+  scoreDetails.macd = Math.round(macdPoints * 10) / 10;
+  totalScore += macdPoints;
+
+  // 4. RSI (0-10 points)
+  let rsiPoints = 0;
+  if (indicators.rsi < BUY_CRITERIA.MAX_RSI) {
+    // More points for RSI in the sweet spot (40-60)
+    if (indicators.rsi >= 40 && indicators.rsi <= 60) {
+      rsiPoints = weights.RSI;
+    } else {
+      rsiPoints = weights.RSI * 0.8; // 80% of points for non-optimal RSI
+    }
+  } else if (indicators.rsi < BUY_CRITERIA.MAX_RSI + 10) {
+    // Partial points for slightly overbought
+    rsiPoints = weights.RSI * (1 - ((indicators.rsi - BUY_CRITERIA.MAX_RSI) / 10));
+  }
+  scoreDetails.rsi = Math.round(rsiPoints * 10) / 10;
+  totalScore += rsiPoints;
+
+  // 5. Price Breakout (0-15 points)
+  let breakoutPoints = 0;
+  const priceAboveBB = token.priceUsd > indicators.bollinger?.upper;
+  const ichimokuBullish = indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen;
+
+  if (priceAboveBB && ichimokuBullish) {
+    // Both signals are bullish
+    breakoutPoints = weights.PRICE_BREAKOUT + (bonus.BONUS_POINTS / 2);
+  } else if (priceAboveBB) {
+    breakoutPoints = weights.PRICE_BREAKOUT * 0.8; // 80% for BB breakout
+  } else if (ichimokuBullish) {
+    breakoutPoints = weights.PRICE_BREAKOUT * 0.7; // 70% for Ichimoku signal
+  } else if (token.priceUsd > indicators.bollinger?.middle) {
+    // Partial points for price above middle BB
+    breakoutPoints = weights.PRICE_BREAKOUT * 0.4;
+  }
+  scoreDetails.breakout = Math.round(breakoutPoints * 10) / 10;
+  totalScore += breakoutPoints;
+
+  // 6. Buy/Sell Ratio (0-15 points)
+  let buySellPoints = 0;
+  const buySellRatio = token.txns?.m5?.buys / (token.txns?.m5?.sells || 1);
+
+  if (buySellRatio > BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M) {
+    buySellPoints = weights.BUY_SELL_RATIO;
+    // Bonus for exceptionally high buy/sell ratio
+    if (buySellRatio > bonus.HIGH_BUY_SELL_RATIO) {
+      buySellPoints += bonus.BONUS_POINTS;
+    }
+  } else if (buySellRatio > 1.0) {
+    // Partial points for positive but below threshold
+    buySellPoints = (buySellRatio - 1) / (BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M - 1) * weights.BUY_SELL_RATIO;
+  }
+  scoreDetails.buySellRatio = Math.round(buySellPoints * 10) / 10;
+  totalScore += buySellPoints;
+
+  // 7. Holder Growth (0-10 points)
+  let holderPoints = 0;
+  if (token.holderChange24h === undefined) {
+    // If holder data is missing, award partial points
+    holderPoints = weights.HOLDER_GROWTH * 0.5;
+  } else if (token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H) {
+    holderPoints = weights.HOLDER_GROWTH;
+    // Bonus for strong holder growth
+    if (token.holderChange24h > 5) { // 5% growth
+      holderPoints += bonus.BONUS_POINTS / 2;
+    }
+  } else if (token.holderChange24h > -2) {
+    // Partial points for slightly negative holder change
+    holderPoints = (token.holderChange24h + 2) / 2 * weights.HOLDER_GROWTH * 0.5;
+  }
+  scoreDetails.holderGrowth = Math.round(holderPoints * 10) / 10;
+  totalScore += holderPoints;
+
+  // Round total score to one decimal place
+  totalScore = Math.round(totalScore * 10) / 10;
+
+  // Log detailed scoring breakdown
+  console.log('Scoring breakdown:');
+  console.log(`- Token Score: ${scoreDetails.tokenScore}/${weights.TOKEN_SCORE}`);
+  console.log(`- Price Momentum: ${scoreDetails.momentum}/${weights.PRICE_MOMENTUM}`);
+  console.log(`- MACD: ${scoreDetails.macd}/${weights.MACD}`);
+  console.log(`- RSI: ${scoreDetails.rsi}/${weights.RSI}`);
+  console.log(`- Price Breakout: ${scoreDetails.breakout}/${weights.PRICE_BREAKOUT}`);
+  console.log(`- Buy/Sell Ratio: ${scoreDetails.buySellRatio}/${weights.BUY_SELL_RATIO}`);
+  console.log(`- Holder Growth: ${scoreDetails.holderGrowth}/${weights.HOLDER_GROWTH}`);
+  console.log(`Total Score: ${totalScore}/100 (Threshold: ${BUY_CRITERIA.MIN_TOTAL_SCORE})`);
+
+  const result = totalScore >= BUY_CRITERIA.MIN_TOTAL_SCORE;
+  console.log(`Buy criteria met (scoring): ${result}`);
   return result;
 }
 
@@ -164,22 +310,71 @@ async function executeBuy(token, jupiterService, connection) {
     // Get actual token amount from updated balance
     let actualAmount;
     try {
+      // Try to get balance from Jupiter API first
       const balances = await jupiterService.getBalances();
       const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
       const postSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
       actualAmount = postSwapBalance - preSwapBalance;
-      console.log(`Post-swap balance of ${token.symbol}: ${postSwapBalance}`);
-      console.log(`Actual amount received: ${actualAmount}`);
+      console.log(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
+      console.log(`Calculated amount received: ${actualAmount}`);
 
-      if (actualAmount <= 0) {
-        console.warn(`Suspicious amount received (${actualAmount}), falling back to estimate`);
-        actualAmount = BUY_AMOUNT_LAMPORTS / token.priceUsd;
+      // If Jupiter API gives suspicious results, try direct wallet balance check
+      if (actualAmount <= 0 || actualAmount > 1000000000) {
+        console.warn(`Suspicious amount received (${actualAmount}), checking direct wallet balance`);
+
+        // Get token balance directly from the wallet
+        const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+          jupiterService.wallet.publicKey,
+          { mint: new PublicKey(token.tokenAddress) }
+        );
+
+        if (tokenAccount.value.length > 0) {
+          const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
+          const directBalance = parseFloat(balance.uiAmount);
+          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
+
+          // Use direct balance as the actual amount
+          actualAmount = directBalance;
+        } else {
+          console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
+          // Use a more conservative estimate
+          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        }
       }
     } catch (error) {
       console.warn(`Failed to get post-swap balance: ${error.message}`);
-      // Fallback to approximate amount
-      actualAmount = BUY_AMOUNT_LAMPORTS / token.priceUsd;
+
+      try {
+        // Try direct wallet balance check as fallback
+        const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+          jupiterService.wallet.publicKey,
+          { mint: new PublicKey(token.tokenAddress) }
+        );
+
+        if (tokenAccount.value.length > 0) {
+          const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
+          const directBalance = parseFloat(balance.uiAmount);
+          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
+          actualAmount = directBalance;
+        } else {
+          // Last resort fallback
+          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        }
+      } catch (secondError) {
+        console.warn(`Failed to get direct wallet balance: ${secondError.message}`);
+        // Last resort fallback
+        actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+      }
     }
+
+    // Sanity check on the amount
+    if (actualAmount > 1000000000) {
+      console.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
+      // Cap to a reasonable value based on the transaction amount
+      actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
+    }
+
+    console.log(`Final amount used for position: ${actualAmount}`);
 
     // Create position object
     const position = {
@@ -222,11 +417,79 @@ async function executeSell(position, currentData, jupiterService, reason) {
   try {
     console.log(`Attempting to sell ${position.symbol} (${position.tokenAddress}): ${reason}`);
 
-    // Execute swap from token to SOL
+    // Get current token balance to ensure we're selling what we actually have
+    let tokenAmount = null;
+
+    // Try to get the actual token balance directly from the wallet first (most reliable)
+    try {
+      const connection = jupiterService.connection;
+      const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+        jupiterService.wallet.publicKey,
+        { mint: new PublicKey(position.tokenAddress) }
+      );
+
+      if (tokenAccount.value.length > 0) {
+        const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
+        tokenAmount = parseFloat(balance.uiAmount);
+        console.log(`Direct wallet balance of ${position.symbol}: ${tokenAmount}`);
+      }
+    } catch (walletError) {
+      console.warn(`Failed to get direct wallet balance: ${walletError.message}`);
+    }
+
+    // If direct wallet check failed, try Jupiter API
+    if (tokenAmount === null) {
+      try {
+        const balances = await jupiterService.getBalances();
+        const tokenBalance = balances.tokens.find(t => t.mint === position.tokenAddress);
+        if (tokenBalance && tokenBalance.uiAmount > 0) {
+          tokenAmount = tokenBalance.uiAmount;
+          console.log(`Using Jupiter API balance: ${tokenAmount} ${position.symbol}`);
+        }
+      } catch (jupiterError) {
+        console.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
+      }
+    }
+
+    // Last resort: use position amount (but with sanity check)
+    if (tokenAmount === null) {
+      if (position.amount > 0 && position.amount < 1000000000) {
+        tokenAmount = position.amount;
+        console.log(`Using position amount as last resort: ${tokenAmount} ${position.symbol}`);
+      } else {
+        throw new Error(`No valid token amount available for selling`);
+      }
+    }
+
+    // Sanity check - cap extremely large amounts
+    if (tokenAmount > 1000000000) {
+      console.warn(`Token amount suspiciously large (${tokenAmount}), capping to 1,000,000`);
+      tokenAmount = 1000000; // Cap to a reasonable value
+    }
+
+    // Ensure the amount is a valid number
+    if (isNaN(tokenAmount) || tokenAmount <= 0) {
+      throw new Error(`Invalid token amount: ${tokenAmount}`);
+    }
+
+    // Execute swap from token to SOL with detailed error handling
+    console.log(`Executing swap: ${tokenAmount} ${position.symbol} to SOL with ${SLIPPAGE_BPS/100}% slippage`);
+
+    // Get quote first to validate the swap
+    const quote = await jupiterService.getSwapQuote(
+      position.tokenAddress,
+      SOL_MINT,
+      tokenAmount,
+      { slippageBps: SLIPPAGE_BPS }
+    );
+
+    console.log(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
+
+    // Execute the swap
     const txSignature = await jupiterService.executeSwap(
       position.tokenAddress,
       SOL_MINT,
-      position.amount, // Sell entire position
+      tokenAmount,
       { slippageBps: SLIPPAGE_BPS }
     );
 
@@ -238,7 +501,7 @@ async function executeSell(position, currentData, jupiterService, reason) {
       action: 'SELL',
       symbol: position.symbol,
       price: currentData.priceUsd,
-      amount: position.amount,
+      amount: tokenAmount,
       profitLoss,
       txSignature,
       reason
@@ -579,10 +842,19 @@ function getCurrentPositions() {
   }));
 }
 
+/**
+ * Check if there are any open positions
+ * @returns {boolean} - Whether there are open positions
+ */
+function hasOpenPositions() {
+  return positions.size > 0;
+}
+
 module.exports = {
   executeTradingStrategy,
   stopTrading,
   getCurrentPositions,
+  hasOpenPositions,
   // Export these for testing/simulation
   meetsBuyCriteria,
   meetsSellCriteria
