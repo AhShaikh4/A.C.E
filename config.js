@@ -5,12 +5,12 @@ require('dotenv').config();
 // Bot operation settings
 const BOT_CONFIG = {
   // Analysis settings
-  ANALYSIS_INTERVAL_MINUTES: 5, // How often to run analysis (in minutes)
+  ANALYSIS_INTERVAL_MINUTES: 3, // How often to run analysis (in minutes)
   
   // Trading settings
   TRADING_ENABLED: true, // Master switch for trading
   MAX_POSITIONS: 1, // Maximum number of concurrent positions
-  POSITION_CHECK_INTERVAL_SECONDS: 30, // How often to check positions (in seconds)
+  POSITION_CHECK_INTERVAL_SECONDS: 5, // How often to check positions (in seconds)
   
   // Token filtering settings
   MIN_LIQUIDITY_USD: 20000, // Minimum liquidity in USD
@@ -18,7 +18,7 @@ const BOT_CONFIG = {
   MIN_SCORE: 60, // Minimum score (0-100) for buy consideration
   
   // Trade execution settings
-  BUY_AMOUNT_SOL: 0.2, // Amount of SOL to use per trade
+  BUY_AMOUNT_SOL: 0.01, // Amount of SOL to use per trade
   SLIPPAGE_BPS: 500, // Slippage tolerance in basis points (5%)
   
   // Exit settings

@@ -31,13 +31,42 @@ const LOG_LEVELS = {
 const CURRENT_LOG_LEVEL = LOG_LEVELS[BOT_CONFIG.LOG_LEVEL?.toUpperCase()] || LOG_LEVELS.INFO;
 
 /**
+ * Get current timestamp in EST timezone
+ * @returns {string} - Formatted timestamp in EST
+ */
+function getESTTimestamp() {
+  const date = new Date();
+
+  // Format options for EST timezone
+  const options = {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  };
+
+  // Format the date in EST
+  const estTime = date.toLocaleString('en-US', options);
+
+  // Convert to ISO-like format: YYYY-MM-DD HH:MM:SS EST
+  const [datePart, timePart] = estTime.split(', ');
+  const [month, day, year] = datePart.split('/');
+
+  return `${year}-${month}-${day} ${timePart} EST`;
+}
+
+/**
  * Format a log message with timestamp
  * @param {string} level - Log level
  * @param {string} message - Log message
  * @returns {string} - Formatted log message
  */
 function formatLogMessage(level, message) {
-  const timestamp = new Date().toISOString();
+  const timestamp = getESTTimestamp();
   return `[${timestamp}] [${level}] ${message}`;
 }
 
@@ -108,19 +137,19 @@ function error(message, error) {
  */
 function trade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
-  const timestamp = new Date().toISOString();
-  
+  const timestamp = getESTTimestamp();
+
   const logEntry = `[${timestamp}] ${action} ${symbol} | ${reason || ''}\n` +
                   `  Price: ${price} | Amount: ${amount}\n` +
                   `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
                   `  Transaction: ${txSignature || 'N/A'}\n\n`;
-  
+
   // Log to console
   console.log(`Trade: ${action} ${symbol} at $${price} (${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'})`);
-  
+
   // Log to trade file
   writeToLogFile(LOG_FILES.TRADE, logEntry);
-  
+
   // Also log to info file
   writeToLogFile(LOG_FILES.INFO, formatLogMessage('TRADE', `${action} ${symbol} at $${price}`));
 }
@@ -131,23 +160,23 @@ function trade(tradeDetails) {
  */
 function analysis(analysisDetails) {
   const { tokenCount, topTokens, duration } = analysisDetails;
-  const timestamp = new Date().toISOString();
-  
-  const topTokensStr = topTokens.map(t => 
+  const timestamp = getESTTimestamp();
+
+  const topTokensStr = topTokens.map(t =>
     `${t.symbol}: Score ${t.score.toFixed(2)}, Price $${t.priceUsd.toFixed(8)}, Change 1h ${t.priceChange.h1.toFixed(2)}%`
   ).join('\n  ');
-  
+
   const logEntry = `[${timestamp}] Analysis Results\n` +
                   `  Found ${tokenCount} tokens after analysis\n` +
                   `  Duration: ${duration}ms\n` +
                   `  Top tokens:\n  ${topTokensStr}\n\n`;
-  
+
   // Log to console (abbreviated)
   console.log(`Analysis complete: Found ${tokenCount} tokens in ${duration}ms`);
-  
+
   // Log to analysis file
   writeToLogFile(LOG_FILES.ANALYSIS, logEntry);
-  
+
   // Also log to info file (abbreviated)
   writeToLogFile(LOG_FILES.INFO, formatLogMessage('ANALYSIS', `Found ${tokenCount} tokens, top: ${topTokens.map(t => t.symbol).join(', ')}`));
 }
