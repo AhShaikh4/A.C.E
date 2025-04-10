@@ -447,24 +447,30 @@ async function processTokens(finalTokens, jupiterService, dexService, connection
  * Main trading function to be integrated with TA.js
  * @param {Array} finalTokens - Tokens from TA.js
  */
-async function executeTradingStrategy(finalTokens) {
+/**
+ * Execute trading strategy with provided tokens
+ * @param {Array} finalTokens - Tokens from TA.js
+ * @param {Object} services - Optional pre-initialized services
+ * @returns {Object} - Status of trading operations
+ */
+async function executeTradingStrategy(finalTokens, services = {}) {
   try {
     console.log('Initializing trading strategy...');
 
-    // Initialize services
-    const connection = initializeConnection();
-    const wallet = initializeWallet();
-    const walletInfo = await checkWalletBalance(wallet);
+    // Use provided services or initialize new ones
+    const connection = services.connection || initializeConnection();
+    const wallet = services.wallet || initializeWallet();
+    const walletInfo = services.walletInfo || await checkWalletBalance(wallet);
+    const dexService = services.dexService || new DexScreenerService();
 
     // Check if wallet has sufficient balance
     if (!walletInfo.hasMinimumBalance) {
       console.error('Insufficient wallet balance for trading.');
-      return;
+      return { success: false, reason: 'insufficient_balance' };
     }
 
-    // Initialize services
+    // Initialize Jupiter service
     const jupiterService = new JupiterService(connection, wallet);
-    const dexService = new DexScreenerService();
 
     // Process tokens for potential trades
     await processTokens(finalTokens, jupiterService, dexService, connection);
@@ -490,9 +496,75 @@ async function executeTradingStrategy(finalTokens) {
     }
 
     console.log('Trading strategy initialized successfully.');
+    return {
+      success: true,
+      positionsOpened: positions.size,
+      positions: Array.from(positions.entries()).map(([address, pos]) => ({
+        symbol: pos.symbol,
+        entryPrice: pos.entryPrice,
+        amount: pos.amount,
+        entryTime: new Date(pos.entryTime).toISOString()
+      }))
+    };
   } catch (error) {
     console.error(`Trading strategy initialization failed: ${error.message}`);
+    return { success: false, reason: 'initialization_failed', error: error.message };
   }
 }
 
-module.exports = { executeTradingStrategy };
+/**
+ * Stop all trading activities and clean up resources
+ */
+async function stopTrading() {
+  try {
+    console.log('Stopping trading activities...');
+
+    // Clear monitoring interval
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval);
+      monitoringInterval = null;
+      console.log('Position monitoring stopped.');
+    }
+
+    // Log current positions for reference
+    if (positions.size > 0) {
+      console.log(`WARNING: ${positions.size} positions are still open:`);
+      for (const [address, position] of positions.entries()) {
+        console.log(`- ${position.symbol}: ${position.amount} tokens at $${position.entryPrice}`);
+      }
+      console.log('These positions will need to be managed manually or when the bot restarts.');
+    } else {
+      console.log('No open positions to manage.');
+    }
+
+    return { success: true, message: 'Trading stopped successfully' };
+  } catch (error) {
+    console.error(`Error stopping trading: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get current positions
+ * @returns {Array} - Current positions
+ */
+function getCurrentPositions() {
+  return Array.from(positions.entries()).map(([address, pos]) => ({
+    tokenAddress: address,
+    symbol: pos.symbol,
+    entryPrice: pos.entryPrice,
+    currentPrice: pos.currentPrice || pos.entryPrice,
+    amount: pos.amount,
+    entryTime: new Date(pos.entryTime).toISOString(),
+    profitLoss: pos.currentPrice ? ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100 : 0
+  }));
+}
+
+module.exports = {
+  executeTradingStrategy,
+  stopTrading,
+  getCurrentPositions,
+  // Export these for testing/simulation
+  meetsBuyCriteria,
+  meetsSellCriteria
+};

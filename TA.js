@@ -969,19 +969,22 @@ async function performTA(dexServiceParam) {
 async function main() {
   try {
     const finalTokens = await performTA();
-    console.log(`Ready to trade ${finalTokens.length} tokens`);
-
-    // Import and execute trading strategy
-    const { executeTradingStrategy } = require('./trading');
-    await executeTradingStrategy(finalTokens);
+    console.log(`Analysis complete. Found ${finalTokens.length} tokens.`);
+    return finalTokens;
   } catch (error) {
     console.error('Error in TA:', error.message);
+    throw error;
   }
 }
 
 // Only run main() if this file is executed directly, not when imported
 if (require.main === module) {
-  main();
+  main().then(tokens => {
+    console.log('Technical analysis completed. Use main.js to start trading.');
+  }).catch(err => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
 }
 
 // Export functions for use in trading.js and simulation
