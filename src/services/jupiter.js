@@ -28,7 +28,16 @@ class JupiterService {
   // --- Utility Methods ---
   async signAndSendTransaction(transaction) {
     if (!this.wallet) throw new Error('Wallet not provided');
-    transaction.sign(this.wallet);
+
+    // Handle different transaction types (VersionedTransaction vs Transaction)
+    if (transaction instanceof VersionedTransaction) {
+      // For VersionedTransaction
+      transaction.sign([this.wallet]);
+    } else {
+      // For regular Transaction
+      transaction.sign(this.wallet);
+    }
+
     const signature = await this.connection.sendRawTransaction(transaction.serialize());
     const confirmation = await this.connection.confirmTransaction(signature, 'confirmed');
     if (confirmation.value.err) throw new Error(`Transaction failed: ${signature}`);
@@ -44,10 +53,17 @@ class JupiterService {
      * @returns {Object} Token balances
      */
     if (!address) throw new Error('Address required');
-    const response = await limiter.schedule(() =>
-      axios.get(`${JUPITER_API}/ultra/v1/balances/${address.toString()}`)
-    );
-    return response.data;
+
+    try {
+      const response = await limiter.schedule(() =>
+        axios.get(`${JUPITER_API}/ultra/v1/balances/${address.toString()}`)
+      );
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to get balances: ${error.message}`);
+      // Return a default structure to prevent undefined errors
+      return { tokens: [] };
+    }
   }
 
   async createOrder(inputMint, outputMint, amount) {
