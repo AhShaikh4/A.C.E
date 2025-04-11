@@ -38,11 +38,61 @@ class JupiterService {
       transaction.sign(this.wallet);
     }
 
-    const signature = await this.connection.sendRawTransaction(transaction.serialize());
-    const confirmation = await this.connection.confirmTransaction(signature, 'confirmed');
-    if (confirmation.value.err) throw new Error(`Transaction failed: ${signature}`);
-    console.log(`Transaction confirmed: ${signature}`);
-    return signature;
+    try {
+      // Send transaction with higher priority and retry options
+      const signature = await this.connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: true,
+        maxRetries: 3,
+        preflightCommitment: 'processed'
+      });
+
+      try {
+        // Try to confirm with a longer timeout (120 seconds)
+        const confirmation = await this.connection.confirmTransaction(
+          signature,
+          'confirmed',
+          120 * 1000 // 120 second timeout
+        );
+
+        if (confirmation.value.err) {
+          throw new Error(`Transaction failed: ${signature}`);
+        }
+
+        console.log(`Transaction confirmed: ${signature}`);
+        return signature;
+      } catch (confirmError) {
+        // If confirmation times out, check transaction status manually
+        if (confirmError.message && confirmError.message.includes('was not confirmed')) {
+          console.log(`Transaction confirmation timed out, checking status manually: ${signature}`);
+
+          // Wait a bit longer for potential confirmation
+          await new Promise(resolve => setTimeout(resolve, 10000));
+
+          // Check transaction status
+          const status = await this.connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+
+          if (status && status.value) {
+            if (status.value.err) {
+              throw new Error(`Transaction failed after timeout: ${signature}, error: ${JSON.stringify(status.value.err)}`);
+            }
+
+            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+              console.log(`Transaction ${signature} was confirmed after timeout check!`);
+              return signature;
+            }
+          }
+
+          // If we can't determine status, throw the original error
+          throw confirmError;
+        } else {
+          // For other confirmation errors, rethrow
+          throw confirmError;
+        }
+      }
+    } catch (error) {
+      console.error(`Transaction error: ${error.message}`);
+      throw error;
+    }
   }
 
   // --- Ultra API ---
