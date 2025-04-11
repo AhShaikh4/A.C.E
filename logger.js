@@ -7,13 +7,41 @@ const winston = require('winston');
 const { format } = winston;
 const DailyRotateFile = require('winston-daily-rotate-file');
 const Table = require('cli-table3');
-const ora = require('ora');
+const ora = require('ora').default;
 const figlet = require('figlet');
 const boxen = require('boxen');
 const { BOT_CONFIG } = require('./config');
 
 // Spinner for loading animations
 let spinner = null;
+
+// Create a fallback spinner in case ora doesn't work
+const fallbackSpinner = {
+  start: (text) => {
+    console.log(text);
+    return fallbackSpinner;
+  },
+  stop: () => fallbackSpinner,
+  succeed: (text) => {
+    console.log(`✓ ${text}`);
+    return fallbackSpinner;
+  },
+  fail: (text) => {
+    console.log(`✗ ${text}`);
+    return fallbackSpinner;
+  },
+  text: ''
+};
+
+// Use ora if available, otherwise use fallback
+const createSpinner = (text) => {
+  try {
+    return ora(text);
+  } catch (error) {
+    console.log('Warning: ora spinner not available, using fallback');
+    return fallbackSpinner;
+  }
+};
 
 // Ensure log directory exists
 const logDir = BOT_CONFIG.LOG_DIR || './logs';
@@ -98,7 +126,7 @@ const logger = winston.createLogger({
  * Clear all log files on startup
  */
 function clearLogFiles() {
-  const clearSpinner = ora('Clearing log files...').start();
+  const clearSpinner = createSpinner('Clearing log files...').start();
   try {
     // Get all log files in the directory
     const files = fs.readdirSync(logDir);
@@ -169,7 +197,7 @@ function formatConsoleMessage(level, message) {
  */
 function startSpinner(text) {
   if (spinner) spinner.stop();
-  spinner = ora(text).start();
+  spinner = createSpinner(text).start();
 }
 
 /**
@@ -177,7 +205,11 @@ function startSpinner(text) {
  * @param {string} text - New text for the spinner
  */
 function updateSpinner(text) {
-  if (spinner) spinner.text = text;
+  try {
+    if (spinner) spinner.text = text;
+  } catch (error) {
+    console.log(text);
+  }
 }
 
 /**
@@ -185,8 +217,12 @@ function updateSpinner(text) {
  * @param {string} text - Success message
  */
 function succeedSpinner(text) {
-  if (spinner) spinner.succeed(text);
-  spinner = null;
+  try {
+    if (spinner) spinner.succeed(text);
+    spinner = null;
+  } catch (error) {
+    console.log(`✓ ${text}`);
+  }
 }
 
 /**
@@ -194,8 +230,12 @@ function succeedSpinner(text) {
  * @param {string} text - Failure message
  */
 function failSpinner(text) {
-  if (spinner) spinner.fail(text);
-  spinner = null;
+  try {
+    if (spinner) spinner.fail(text);
+    spinner = null;
+  } catch (error) {
+    console.log(`✗ ${text}`);
+  }
 }
 
 /**
@@ -205,34 +245,43 @@ function failSpinner(text) {
  * @param {string} type - Type of box (info, warning, error, success)
  */
 function displayBox(message, title = '', type = 'info') {
-  let boxColor = 'blue';
-  let textColor = chalk.blue;
+  try {
+    let boxColor = 'blue';
+    let textColor = chalk.blue;
 
-  switch (type) {
-    case 'warning':
-      boxColor = 'yellow';
-      textColor = chalk.yellow;
-      break;
-    case 'error':
-      boxColor = 'red';
-      textColor = chalk.red;
-      break;
-    case 'success':
-      boxColor = 'green';
-      textColor = chalk.green;
-      break;
+    switch (type) {
+      case 'warning':
+        boxColor = 'yellow';
+        textColor = chalk.yellow;
+        break;
+      case 'error':
+        boxColor = 'red';
+        textColor = chalk.red;
+        break;
+      case 'success':
+        boxColor = 'green';
+        textColor = chalk.green;
+        break;
+    }
+
+    const boxTitle = title ? `${textColor(title)}\n\n` : '';
+    const boxedMessage = boxen(`${boxTitle}${message}`, {
+      padding: 1,
+      margin: 1,
+      borderStyle: 'round',
+      borderColor: boxColor,
+      align: 'center'
+    });
+
+    console.log(boxedMessage);
+  } catch (error) {
+    // Fallback if boxen fails
+    const separator = '='.repeat(50);
+    console.log(separator);
+    if (title) console.log(`${title.toUpperCase()}:`);
+    console.log(message);
+    console.log(separator);
   }
-
-  const boxTitle = title ? `${textColor(title)}\n\n` : '';
-  const boxedMessage = boxen(`${boxTitle}${message}`, {
-    padding: 1,
-    margin: 1,
-    borderStyle: 'round',
-    borderColor: boxColor,
-    align: 'center'
-  });
-
-  console.log(boxedMessage);
 }
 
 /**
@@ -241,14 +290,22 @@ function displayBox(message, title = '', type = 'info') {
  * @param {string} color - Color for the banner
  */
 function displayBanner(text, color = 'blue') {
-  const colorFn = chalk[color] || chalk.blue;
-  const banner = figlet.textSync(text, {
-    font: 'Standard',
-    horizontalLayout: 'default',
-    verticalLayout: 'default'
-  });
+  try {
+    const colorFn = chalk[color] || chalk.blue;
+    const banner = figlet.textSync(text, {
+      font: 'Standard',
+      horizontalLayout: 'default',
+      verticalLayout: 'default'
+    });
 
-  console.log('\n' + colorFn(banner) + '\n');
+    console.log('\n' + colorFn(banner) + '\n');
+  } catch (error) {
+    // Fallback if figlet fails
+    const separator = '*'.repeat(50);
+    console.log(separator);
+    console.log(`*${' '.repeat(Math.floor((48 - text.length) / 2))}${text.toUpperCase()}${' '.repeat(Math.ceil((48 - text.length) / 2))}*`);
+    console.log(separator);
+  }
 }
 
 /**
