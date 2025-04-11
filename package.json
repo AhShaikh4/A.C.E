@@ -24,10 +24,17 @@
     "axios": "^1.8.4",
     "axios-rate-limit": "^1.4.0",
     "bottleneck": "^2.19.5",
+    "boxen": "^8.0.1",
     "bs58": "^6.0.0",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
     "dotenv": "^16.4.7",
+    "figlet": "^1.8.0",
     "fs-extra": "^11.3.0",
     "inquirer": "^8.2.6",
-    "technicalindicators": "^3.1.0"
+    "ora": "^8.2.0",
+    "technicalindicators": "^3.1.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   }
 }
