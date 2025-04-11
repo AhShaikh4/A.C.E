@@ -363,15 +363,51 @@ async function executeBuy(token, jupiterService, connection) {
     }
     */
 
-    // Using fixed buy amount as requested
-    console.log(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
+    // Check wallet balance and adjust buy amount if needed
+    let buyAmountSOL = BUY_AMOUNT_SOL;
+    let buyAmountLamports = BUY_AMOUNT_LAMPORTS;
 
-    // Execute swap from SOL to token
+    try {
+      // Get current SOL balance
+      const solBalance = await connection.getBalance(jupiterService.wallet.publicKey);
+      const solBalanceSOL = solBalance / 1000000000; // Convert lamports to SOL
+      console.log(`Current wallet SOL balance: ${solBalanceSOL} SOL`);
+
+      // Reserve some SOL for transaction fees
+      const MINIMUM_SOL_RESERVE = 0.0005; // 0.0005 SOL for fees
+      const availableSOL = solBalanceSOL - MINIMUM_SOL_RESERVE;
+
+      if (availableSOL <= 0) {
+        throw new Error(`Insufficient SOL balance for trading. Current: ${solBalanceSOL} SOL`);
+      }
+
+      // If wallet has less than configured amount, use what's available
+      if (availableSOL < BUY_AMOUNT_SOL) {
+        buyAmountSOL = availableSOL * 0.95; // Use 95% of available SOL
+        buyAmountLamports = Math.floor(buyAmountSOL * 1000000000);
+        console.log(`Wallet has less than configured amount. Using ${buyAmountSOL} SOL (${buyAmountLamports} lamports) instead`);
+      } else {
+        console.log(`Executing swap with configured amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
+      }
+
+      if (buyAmountLamports < 500000) { // Minimum 0.0005 SOL
+        throw new Error(`Buy amount too small: ${buyAmountSOL} SOL. Minimum required: 0.0005 SOL`);
+      }
+    } catch (error) {
+      console.error(`Failed to check wallet balance: ${error.message}`);
+      return null;
+    }
+
+    // Execute swap from SOL to token with higher priority fee
     const txSignature = await jupiterService.executeSwap(
       SOL_MINT,
       token.tokenAddress,
-      BUY_AMOUNT_LAMPORTS,
-      { slippageBps: SLIPPAGE_BPS }
+      buyAmountLamports,
+      {
+        slippageBps: SLIPPAGE_BPS,
+        priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 5000000, priorityLevel: 'high' } },
+        timeout: 60000 // Increase timeout to 60 seconds
+      }
     );
 
     // Wait a moment for the transaction to be confirmed and balances to update
@@ -408,7 +444,7 @@ async function executeBuy(token, jupiterService, connection) {
         } else {
           console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       }
     } catch (error) {
@@ -428,12 +464,12 @@ async function executeBuy(token, jupiterService, connection) {
           actualAmount = directBalance;
         } else {
           // Last resort fallback
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       } catch (secondError) {
         console.warn(`Failed to get direct wallet balance: ${secondError.message}`);
         // Last resort fallback
-        actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
       }
     }
 
@@ -441,7 +477,7 @@ async function executeBuy(token, jupiterService, connection) {
     if (actualAmount > 1000000000) {
       console.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
       // Cap to a reasonable value based on the transaction amount
-      actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
+      actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05);
     }
 
     console.log(`Final amount used for position: ${actualAmount}`);
