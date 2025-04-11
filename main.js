@@ -2,6 +2,8 @@
 
 require('dotenv').config();
 const fs = require('fs').promises;
+const chalk = require('chalk');
+const Table = require('cli-table3');
 const { initializeConnection, initializeWallet, checkWalletBalance, initializeMode } = require('./wallet');
 const { MODES } = require('./mode');
 const { performTA } = require('./TA');
@@ -9,6 +11,9 @@ const trading = require('./trading');
 const { DexScreenerService } = require('./src/services/dexscreener');
 const { BOT_CONFIG } = require('./config');
 const logger = require('./logger');
+
+// Display welcome banner
+logger.displayBanner('Solana Memecoin Bot', 'blue');
 
 // Global state
 let isRunning = false;
@@ -20,43 +25,60 @@ const ANALYSIS_INTERVAL = BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES * 60 * 1000; // C
  * @returns {Object} Initialized services and connections
  */
 async function initialize() {
-  console.log('Initializing Solana Memecoin Trading Bot...');
+  // Start initialization with banner and spinner
+  logger.startSpinner('Initializing Solana Memecoin Trading Bot...');
 
   try {
     // Initialize wallet and connection
+    logger.updateSpinner('Connecting to Solana mainnet-beta...');
     const connection = initializeConnection();
+    logger.succeedSpinner('✓ Successfully connected to Solana mainnet-beta');
+
+    logger.startSpinner('Initializing wallet...');
     const wallet = initializeWallet();
+    logger.succeedSpinner('Wallet initialized successfully');
+
+    logger.startSpinner('Checking wallet balance...');
     const walletInfo = await checkWalletBalance(wallet);
+    logger.succeedSpinner(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
 
     // Get buy amount from config
     const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
 
+    // Display wallet status in a box
+    const walletStatusMessage = [
+      `Public Key: ${walletInfo.publicKey}`,
+      `Balance: ${walletInfo.balance} SOL`,
+      `Minimum Balance Check: ${walletInfo.hasMinimumBalance ? chalk.green('PASSED') : chalk.red('FAILED')}`,
+      `Trading Balance Check: ${walletInfo.balance >= buyAmount ? chalk.green('PASSED') : chalk.red('FAILED')} (min: ${buyAmount} SOL)`
+    ].join('\n');
+
+    logger.displayBox(walletStatusMessage, 'Wallet Status', walletInfo.balance >= buyAmount ? 'success' : 'warning');
+
     // Check if wallet has sufficient balance for transactions
     if (!walletInfo.hasMinimumBalance) {
-      console.error(`Insufficient wallet balance (${walletInfo.balance} SOL) for any operations.`);
-      console.log(`Minimum required for transactions: ${BOT_CONFIG.MINIMUM_SOL_BALANCE} SOL`);
-      console.log('You can still run in monitoring mode.');
+      logger.warn(`Insufficient wallet balance (${walletInfo.balance} SOL) for any operations.`);
+      logger.warn(`Minimum required for transactions: ${BOT_CONFIG.MINIMUM_SOL_BALANCE} SOL`);
+      logger.info('You can still run in monitoring mode.');
     }
     // Check if wallet has sufficient balance for trading
     else if (walletInfo.balance < buyAmount) {
-      console.error(`Insufficient wallet balance (${walletInfo.balance} SOL) for trading.`);
-      console.log(`Minimum required for trading: ${buyAmount} SOL`);
-      console.log('You can still run in monitoring mode.');
+      logger.warn(`Insufficient wallet balance (${walletInfo.balance} SOL) for trading.`);
+      logger.warn(`Minimum required for trading: ${buyAmount} SOL`);
+      logger.info('You can still run in monitoring mode.');
     }
-
-    console.log('\nWallet Status:');
-    console.log('-------------');
-    console.log(`Public Key: ${walletInfo.publicKey}`);
-    console.log(`Balance: ${walletInfo.balance} SOL`);
-    console.log(`Minimum Balance Check: ${walletInfo.hasMinimumBalance ? 'PASSED' : 'FAILED'}`);
-    console.log(`Trading Balance Check: ${walletInfo.balance >= buyAmount ? 'PASSED' : 'FAILED'} (min: ${buyAmount} SOL)`);
 
     // Initialize bot mode
     const mode = await initializeMode(walletInfo.balance);
-    console.log(`\nBot Mode: ${mode.toUpperCase()}`);
+
+    // Display mode in a box
+    const modeColor = mode === MODES.TRADING ? 'success' : 'info';
+    logger.displayBox(`Bot is running in ${mode.toUpperCase()} mode`, 'Mode', modeColor);
 
     // Initialize services
+    logger.startSpinner('Initializing services...');
     const dexService = new DexScreenerService();
+    logger.succeedSpinner('Services initialized successfully');
 
     return {
       connection,
@@ -88,25 +110,27 @@ async function runCycle(services) {
     // If we're in trading mode and have open positions, skip the full analysis
     // and just monitor the existing positions
     if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED && hasOpenPositions) {
-      logger.info('Open positions detected. Skipping full analysis and focusing on position monitoring...');
+      logger.startSpinner('Monitoring open positions...');
       const result = await trading.executeTradingStrategy([], services);
 
       if (result.success) {
-        logger.info(`Position monitoring executed successfully. Positions: ${result.positionsOpened}`);
+        logger.succeedSpinner(`Position monitoring executed successfully. Positions: ${result.positionsOpened}`);
       } else {
+        logger.failSpinner(`Position monitoring failed: ${result.reason}`);
         logger.warn(`Position monitoring failed: ${result.reason}`);
       }
 
       const duration = Date.now() - startTime;
-      logger.info(`Analysis Cycle Completed in ${duration}ms`);
+      logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
       return [];
     }
 
     // Perform technical analysis to find trading opportunities
-    logger.info('Performing technical analysis...');
+    logger.startSpinner('Performing technical analysis...');
     const analyzedTokens = await performTA(services.dexService);
+    logger.succeedSpinner('Technical analysis completed.');
 
-    // Log analysis results
+    // Log analysis results with enhanced formatting
     const duration = Date.now() - startTime;
     logger.analysis({
       tokenCount: analyzedTokens.length,
@@ -114,19 +138,30 @@ async function runCycle(services) {
       duration
     });
 
+    logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
+
     // Execute trading strategy if in trading mode
     if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED) {
-      logger.info('Executing trading strategy...');
+      logger.startSpinner('Executing trading strategy...');
       const result = await trading.executeTradingStrategy(analyzedTokens, services);
 
       if (result.success) {
-        logger.info(`Trading strategy executed successfully. Positions opened: ${result.positionsOpened}`);
+        logger.succeedSpinner(`Trading strategy executed successfully. Positions opened: ${result.positionsOpened}`);
         if (result.positionsOpened > 0) {
-          result.positions.forEach(pos => {
-            logger.info(`Position opened: ${pos.symbol} at $${pos.entryPrice}, amount: ${pos.amount}`);
+          // Create a table for opened positions
+          const posTable = new Table({
+            head: ['Symbol', 'Entry Price', 'Amount'],
+            style: { head: ['cyan'] }
           });
+
+          result.positions.forEach(pos => {
+            posTable.push([chalk.bold(pos.symbol), `$${pos.entryPrice}`, pos.amount]);
+          });
+
+          console.log(posTable.toString());
         }
       } else {
+        logger.failSpinner(`Trading strategy execution failed: ${result.reason}`);
         logger.warn(`Trading strategy execution failed: ${result.reason}`);
       }
     } else {
@@ -160,7 +195,7 @@ async function runCycle(services) {
  */
 async function startBot() {
   if (isRunning) {
-    logger.info('Bot is already running.');
+    logger.warn('Bot is already running.');
     return { success: false, reason: 'already_running' };
   }
 
@@ -174,24 +209,29 @@ async function startBot() {
     const logDir = BOT_CONFIG.LOG_DIR || './logs';
     await fs.mkdir(logDir, { recursive: true }).catch(() => {});
 
-    // Log bot configuration
-    logger.info(`Bot Configuration:`);
-    logger.info(`- Network: ${BOT_CONFIG.NETWORK}`);
-    logger.info(`- Trading Enabled: ${BOT_CONFIG.TRADING_ENABLED}`);
-    logger.info(`- Analysis Interval: ${BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES} minutes`);
-    logger.info(`- Max Positions: ${BOT_CONFIG.MAX_POSITIONS}`);
-    logger.info(`- Buy Amount: ${BOT_CONFIG.BUY_AMOUNT_SOL} SOL`);
+    // Display bot configuration in a box
+    const configMessage = [
+      `Network: ${chalk.cyan(BOT_CONFIG.NETWORK)}`,
+      `Trading Enabled: ${BOT_CONFIG.TRADING_ENABLED ? chalk.green('YES') : chalk.red('NO')}`,
+      `Analysis Interval: ${chalk.cyan(BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES + ' minutes')}`,
+      `Max Positions: ${chalk.cyan(BOT_CONFIG.MAX_POSITIONS.toString())}`,
+      `Buy Amount: ${chalk.cyan(BOT_CONFIG.BUY_AMOUNT_SOL + ' SOL')}`
+    ].join('\n');
+
+    logger.displayBox(configMessage, 'Bot Configuration', 'info');
 
     // Run first cycle immediately
-    logger.info('Running initial analysis cycle...');
+    logger.startSpinner('Running initial analysis cycle...');
     const initialTokens = await runCycle(services);
-    logger.info(`Initial analysis found ${initialTokens.length} tokens`);
+    logger.succeedSpinner(`Initial analysis found ${chalk.yellow(initialTokens.length)} tokens`);
 
     // Set up interval for subsequent cycles
-    logger.info(`Setting up recurring analysis every ${BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES} minutes`);
+    logger.startSpinner(`Setting up recurring analysis...`);
     analysisInterval = setInterval(() => runCycle(services), ANALYSIS_INTERVAL);
+    logger.succeedSpinner(`Recurring analysis set up every ${chalk.cyan(BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES + ' minutes')}`);
 
-    logger.info(`Bot started successfully. Press Ctrl+C to stop the bot.`);
+    // Display success message
+    logger.displayBox(`Bot is now running in ${chalk.bold(services.mode.toUpperCase())} mode\nPress Ctrl+C to stop the bot.`, 'Bot Started', 'success');
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
@@ -203,7 +243,12 @@ async function startBot() {
 
     return { success: true, message: 'Bot started successfully' };
   } catch (error) {
+    logger.failSpinner(`Failed to start bot: ${error.message}`);
     logger.error(`Failed to start bot: ${error.message}`, error);
+
+    // Display error message in a box
+    logger.displayBox(`${error.message}\n\nPlease check the logs for more details.`, 'Bot Startup Failed', 'error');
+
     isRunning = false;
     return { success: false, reason: 'initialization_failed', error: error.message };
   }
@@ -218,7 +263,7 @@ async function stopBot() {
     return { success: true, message: 'Bot was not running' };
   }
 
-  logger.info('Stopping bot...');
+  logger.startSpinner('Stopping bot...');
 
   // Clear the analysis interval
   if (analysisInterval) {
@@ -229,20 +274,42 @@ async function stopBot() {
 
   // Stop trading activities
   try {
+    logger.updateSpinner('Stopping trading activities...');
     const tradingResult = await trading.stopTrading();
-    logger.info(`Trading stopped: ${tradingResult.message || 'Successfully'}`);
+    logger.succeedSpinner(`Trading stopped: ${tradingResult.message || 'Successfully'}`);
 
     // Get current positions before stopping
     const positions = trading.getCurrentPositions();
     if (positions.length > 0) {
+      // Create a table for open positions
+      const posTable = new Table({
+        head: ['Symbol', 'Entry Price', 'Amount', 'Entry Time'],
+        style: { head: ['cyan'] }
+      });
+
+      positions.forEach(pos => {
+        posTable.push([
+          chalk.bold(pos.symbol),
+          `$${pos.entryPrice}`,
+          pos.amount,
+          new Date(pos.entryTime).toLocaleString()
+        ]);
+      });
+
       logger.warn(`Bot stopped with ${positions.length} open positions. These will need to be managed manually.`);
+      console.log(posTable.toString());
     }
   } catch (error) {
+    logger.failSpinner('Error stopping trading activities');
     logger.error('Error stopping trading activities', error);
   }
 
   isRunning = false;
+
+  // Display goodbye message
+  logger.displayBox('Thank you for using the Solana Memecoin Trading Bot!', 'Goodbye', 'info');
   logger.info('Bot stopped successfully.');
+
   return { success: true, message: 'Bot stopped successfully' };
 }
 
