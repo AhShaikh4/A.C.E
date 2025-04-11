@@ -15,11 +15,12 @@ const { BOT_CONFIG } = require('./config');
 
 // Constants
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
-const CONFIGURED_BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Configured buy amount in SOL
+const BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Fixed buy amount in SOL
+const BUY_AMOUNT_LAMPORTS = BUY_AMOUNT_SOL * 1000000000; // Convert SOL to lamports
 const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS || 1; // Maximum number of concurrent positions
 const PRICE_CHECK_INTERVAL = 30000; // 30 seconds
 const SLIPPAGE_BPS = BOT_CONFIG.SLIPPAGE_BPS || 500; // Slippage tolerance
-const MINIMUM_SOL_RESERVE = 0.001; // Minimum SOL to keep in wallet for transaction fees
+// const MINIMUM_SOL_RESERVE = 0.001; // Minimum SOL to keep in wallet for transaction fees (not used)
 
 // Position tracking
 const positions = new Map();
@@ -324,8 +325,9 @@ async function executeBuy(token, jupiterService, connection) {
       }
     }
 
+    /* Dynamic buy amount adjustment (commented out as requested)
     // Check wallet SOL balance and adjust buy amount if needed
-    let buyAmountSOL = CONFIGURED_BUY_AMOUNT_SOL;
+    let buyAmountSOL = BUY_AMOUNT_SOL;
     let buyAmountLamports;
 
     try {
@@ -342,7 +344,7 @@ async function executeBuy(token, jupiterService, connection) {
       }
 
       // Adjust buy amount if wallet has less than configured amount
-      if (availableSOL < CONFIGURED_BUY_AMOUNT_SOL) {
+      if (availableSOL < BUY_AMOUNT_SOL) {
         buyAmountSOL = availableSOL * 0.95; // Use 95% of available SOL to leave room for fees
         console.log(`Adjusting buy amount to ${buyAmountSOL} SOL based on available balance`);
       }
@@ -359,12 +361,16 @@ async function executeBuy(token, jupiterService, connection) {
       console.error(`Failed to check wallet balance: ${error.message}`);
       return null;
     }
+    */
+
+    // Using fixed buy amount as requested
+    console.log(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
 
     // Execute swap from SOL to token
     const txSignature = await jupiterService.executeSwap(
       SOL_MINT,
       token.tokenAddress,
-      buyAmountLamports,
+      BUY_AMOUNT_LAMPORTS,
       { slippageBps: SLIPPAGE_BPS }
     );
 
@@ -402,7 +408,7 @@ async function executeBuy(token, jupiterService, connection) {
         } else {
           console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
-          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       }
     } catch (error) {
@@ -422,12 +428,12 @@ async function executeBuy(token, jupiterService, connection) {
           actualAmount = directBalance;
         } else {
           // Last resort fallback
-          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       } catch (secondError) {
         console.warn(`Failed to get direct wallet balance: ${secondError.message}`);
         // Last resort fallback
-        actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
       }
     }
 
@@ -435,7 +441,7 @@ async function executeBuy(token, jupiterService, connection) {
     if (actualAmount > 1000000000) {
       console.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
       // Cap to a reasonable value based on the transaction amount
-      actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05);
+      actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
     }
 
     console.log(`Final amount used for position: ${actualAmount}`);
