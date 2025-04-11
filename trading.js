@@ -545,38 +545,104 @@ async function executeSell(position, currentData, jupiterService, reason) {
     // Execute swap from token to SOL with detailed error handling
     console.log(`Executing swap: ${tokenAmount} ${position.symbol} to SOL with ${SLIPPAGE_BPS/100}% slippage`);
 
-    // Get quote first to validate the swap
-    const quote = await jupiterService.getSwapQuote(
-      position.tokenAddress,
-      SOL_MINT,
-      tokenAmount,
-      { slippageBps: SLIPPAGE_BPS }
-    );
+    try {
+      // Get quote first to validate the swap
+      const quote = await jupiterService.getSwapQuote(
+        position.tokenAddress,
+        SOL_MINT,
+        tokenAmount,
+        { slippageBps: SLIPPAGE_BPS }
+      );
 
-    console.log(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
+      console.log(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
 
-    // Execute the swap
-    const txSignature = await jupiterService.executeSwap(
-      position.tokenAddress,
-      SOL_MINT,
-      tokenAmount,
-      { slippageBps: SLIPPAGE_BPS }
-    );
+      // Check if the quote is valid
+      if (!quote || !quote.outAmount) {
+        throw new Error(`Invalid quote received: ${JSON.stringify(quote)}`);
+      }
 
-    // Calculate profit/loss
-    const profitLoss = ((currentData.priceUsd - position.entryPrice) / position.entryPrice) * 100;
+      // If the amount is very small, increase slippage to ensure the transaction goes through
+      let adjustedSlippage = SLIPPAGE_BPS;
+      if (tokenAmount < 10) {
+        adjustedSlippage = 1000; // 10% slippage for very small amounts
+        console.log(`Small token amount detected, increasing slippage to 10% to ensure transaction success`);
+      }
 
-    // Log the trade
-    await logTrade({
-      action: 'SELL',
-      symbol: position.symbol,
-      price: currentData.priceUsd,
-      amount: tokenAmount,
-      profitLoss,
-      txSignature,
-      reason
-    });
+      // Execute the swap with higher priority fee for sell transactions
+      const txSignature = await jupiterService.executeSwap(
+        position.tokenAddress,
+        SOL_MINT,
+        tokenAmount,
+        {
+          slippageBps: adjustedSlippage,
+          priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 10000000, priorityLevel: 'high' } }
+        }
+      );
 
+      console.log(`Sell transaction confirmed: ${txSignature}`);
+
+      // Log the trade with transaction signature
+      await logTrade({
+        action: 'SELL',
+        symbol: position.symbol,
+        price: currentData.priceUsd,
+        amount: tokenAmount,
+        profitLoss: ((currentData.priceUsd - position.entryPrice) / position.entryPrice) * 100,
+        txSignature,
+        reason
+      });
+    } catch (swapError) {
+      // Try with a smaller amount if the full amount fails
+      if (tokenAmount > 1) {
+        const reducedAmount = tokenAmount * 0.95; // Try with 95% of the tokens
+        console.log(`First attempt failed, trying with reduced amount: ${reducedAmount} ${position.symbol}`);
+
+        try {
+          // Get quote with higher slippage
+          const retryQuote = await jupiterService.getSwapQuote(
+            position.tokenAddress,
+            SOL_MINT,
+            reducedAmount,
+            { slippageBps: 1000 } // Higher slippage for second attempt
+          );
+
+          if (!retryQuote || !retryQuote.outAmount) {
+            throw new Error(`Invalid quote received for retry: ${JSON.stringify(retryQuote)}`);
+          }
+
+          console.log(`Retry quote received: ${retryQuote.outAmount} lamports (≈${retryQuote.outAmount/1e9} SOL)`);
+
+          const retryTxSignature = await jupiterService.executeSwap(
+            position.tokenAddress,
+            SOL_MINT,
+            reducedAmount,
+            {
+              slippageBps: 1000,
+              priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 15000000, priorityLevel: 'high' } }
+            }
+          );
+
+          console.log(`Sell transaction with reduced amount confirmed: ${retryTxSignature}`);
+
+          // Log the trade with transaction signature
+          await logTrade({
+            action: 'SELL',
+            symbol: position.symbol,
+            price: currentData.priceUsd,
+            amount: reducedAmount,
+            profitLoss: ((currentData.priceUsd - position.entryPrice) / position.entryPrice) * 100,
+            txSignature: retryTxSignature,
+            reason: reason + ' (reduced amount)'
+          });
+        } catch (retryError) {
+          throw new Error(`Failed to sell with reduced amount: ${retryError.message}. Original error: ${swapError.message}`);
+        }
+      } else {
+        throw swapError;
+      }
+    }
+
+    // Success! Return true
     return true;
   } catch (error) {
     console.error(`Sell execution failed for ${position.symbol}: ${error.message}`);
