@@ -457,10 +457,14 @@ async function executeBuy(token, jupiterService, connection) {
         if (tokenAccount.value.length > 0) {
           const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
           const directBalance = parseFloat(balance.uiAmount);
-          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
+          const tokenDecimals = balance.decimals;
+          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance} (decimals: ${tokenDecimals})`);
 
           // Use direct balance as the actual amount
           actualAmount = directBalance;
+
+          // Store token decimals for later use
+          token.tokenDecimals = tokenDecimals;
         } else {
           console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
@@ -511,7 +515,8 @@ async function executeBuy(token, jupiterService, connection) {
       highestPrice: token.priceUsd,
       amount: actualAmount,
       poolAddress: token.poolAddress,
-      txSignature
+      txSignature,
+      tokenDecimals: token.tokenDecimals || 9 // Default to 9 decimals if not available
     };
 
     // Log the trade
@@ -556,8 +561,13 @@ async function executeSell(position, currentData, jupiterService, reason) {
 
       if (tokenAccount.value.length > 0) {
         const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
+        // Store both UI amount and decimals for conversion
         tokenAmount = parseFloat(balance.uiAmount);
-        console.log(`Direct wallet balance of ${position.symbol}: ${tokenAmount}`);
+        const tokenDecimals = balance.decimals;
+        console.log(`Direct wallet balance of ${position.symbol}: ${tokenAmount} (decimals: ${tokenDecimals})`);
+
+        // Store token decimals in the position for later use
+        position.tokenDecimals = tokenDecimals;
       }
     } catch (walletError) {
       console.warn(`Failed to get direct wallet balance: ${walletError.message}`);
@@ -599,14 +609,18 @@ async function executeSell(position, currentData, jupiterService, reason) {
     }
 
     // Execute swap from token to SOL with detailed error handling
-    console.log(`Executing swap: ${tokenAmount} ${position.symbol} to SOL with ${SLIPPAGE_BPS/100}% slippage`);
+    // Convert UI amount to raw amount based on token decimals
+    const tokenDecimals = position.tokenDecimals || 9; // Default to 9 decimals if not available
+    const rawTokenAmount = Math.floor(tokenAmount * Math.pow(10, tokenDecimals));
+
+    console.log(`Executing swap: ${tokenAmount} ${position.symbol} (${rawTokenAmount} raw units) to SOL with ${SLIPPAGE_BPS/100}% slippage`);
 
     try {
-      // Get quote first to validate the swap
+      // Get quote first to validate the swap using raw amount
       const quote = await jupiterService.getSwapQuote(
         position.tokenAddress,
         SOL_MINT,
-        tokenAmount,
+        rawTokenAmount,
         { slippageBps: SLIPPAGE_BPS }
       );
 
@@ -634,7 +648,7 @@ async function executeSell(position, currentData, jupiterService, reason) {
         txSignature = await jupiterService.executeSwap(
           position.tokenAddress,
           SOL_MINT,
-          tokenAmount,
+          rawTokenAmount, // Use raw token amount instead of UI amount
           {
             slippageBps: sellSlippage,
             // Use auto priority fee with multiplier to ensure transaction goes through
@@ -700,8 +714,11 @@ async function executeSell(position, currentData, jupiterService, reason) {
     } catch (swapError) {
       // Try with a smaller amount if the full amount fails
       if (tokenAmount > 1) {
-        const reducedAmount = tokenAmount * 0.95; // Try with 95% of the tokens
-        console.log(`First attempt failed, trying with reduced amount: ${reducedAmount} ${position.symbol}`);
+        // Reduce UI amount by 5%
+        const reducedUIAmount = tokenAmount * 0.95;
+        // Convert to raw amount
+        const reducedRawAmount = Math.floor(reducedUIAmount * Math.pow(10, tokenDecimals));
+        console.log(`First attempt failed, trying with reduced amount: ${reducedUIAmount} ${position.symbol} (${reducedRawAmount} raw units)`);
 
         try {
           // Try with even higher slippage for retry
@@ -709,14 +726,15 @@ async function executeSell(position, currentData, jupiterService, reason) {
           console.log(`Retry attempt with ${retrySlippage/100}% slippage and further reduced amount`);
 
           // Further reduce amount to 80% of already reduced amount
-          const finalAmount = Math.floor(reducedAmount * 0.8);
-          console.log(`Final retry amount: ${finalAmount} ${position.symbol}`);
+          const finalUIAmount = reducedUIAmount * 0.8;
+          const finalRawAmount = Math.floor(finalUIAmount * Math.pow(10, tokenDecimals));
+          console.log(`Final retry amount: ${finalUIAmount} ${position.symbol} (${finalRawAmount} raw units)`);
 
-          // Get quote with much higher slippage
+          // Get quote with much higher slippage using raw amount
           const retryQuote = await jupiterService.getSwapQuote(
             position.tokenAddress,
             SOL_MINT,
-            finalAmount,
+            finalRawAmount, // Use raw amount
             { slippageBps: retrySlippage } // Much higher slippage for desperate retry
           );
 
@@ -729,7 +747,7 @@ async function executeSell(position, currentData, jupiterService, reason) {
           const retryTxSignature = await jupiterService.executeSwap(
             position.tokenAddress,
             SOL_MINT,
-            finalAmount,
+            finalRawAmount, // Use raw amount
             {
               slippageBps: retrySlippage,
               priorityFee: "auto", // Use auto priority fee
@@ -745,7 +763,7 @@ async function executeSell(position, currentData, jupiterService, reason) {
             action: 'SELL',
             symbol: position.symbol,
             price: currentData.priceUsd,
-            amount: finalAmount, // Use the final amount that was actually sold
+            amount: finalUIAmount, // Use the final UI amount that was actually sold
             profitLoss: ((currentData.priceUsd - position.entryPrice) / position.entryPrice) * 100,
             txSignature: retryTxSignature,
             reason: reason + ' (reduced amount)'
