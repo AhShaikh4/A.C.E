@@ -54,7 +54,7 @@ function initializeWallet() {
 
         // Decode base58 private key
         const privateKey = bs58.default.decode(process.env.PRIVATE_KEY);
-        
+
         // Validate private key length
         if (privateKey.length !== 64) {
             throw new Error(`Invalid private key length. Expected 64 bytes but got ${privateKey.length}`);
@@ -113,7 +113,7 @@ async function checkWalletBalance(wallet) {
 
         console.log('Wallet public key:', wallet.publicKey.toString());
         console.log('Wallet balance:', solBalance, 'SOL');
-        
+
         if (!hasMinimumBalance) {
             console.warn(`Warning: Wallet balance (${solBalance} SOL) is below minimum recommended balance (${MINIMUM_SOL_BALANCE} SOL)`);
         }
@@ -134,13 +134,17 @@ async function checkWalletBalance(wallet) {
  * @returns {Promise<string>} Selected mode
  */
 async function initializeMode(balance) {
-    return await selectMode(balance, MINIMUM_SOL_BALANCE);
+    // Get the buy amount from config
+    const { BOT_CONFIG } = require('./config');
+    const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
+
+    return await selectMode(balance, MINIMUM_SOL_BALANCE, buyAmount);
 }
 
 async function main() {
     try {
         console.log('Initializing trading bot...');
-        
+
         // Initialize wallet
         const wallet = initializeWallet();
         if (!wallet) {
@@ -149,16 +153,20 @@ async function main() {
 
         // Check wallet balance
         const walletInfo = await checkWalletBalance(wallet);
+        const { BOT_CONFIG } = require('./config');
+        const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
+
         console.log('\nWallet Status:');
         console.log('-------------');
         console.log(`Public Key: ${walletInfo.publicKey}`);
         console.log(`Balance: ${walletInfo.balance} SOL`);
         console.log(`Minimum Balance Check: ${walletInfo.hasMinimumBalance ? 'PASSED' : 'FAILED'}`);
-        
+        console.log(`Trading Balance Check: ${walletInfo.balance >= buyAmount ? 'PASSED' : 'FAILED'} (min: ${buyAmount} SOL)`);
+
         // Initialize bot mode
         const mode = await initializeMode(walletInfo.balance);
         console.log(`\nBot Mode: ${mode.toUpperCase()}`);
-        
+
         if (mode === 'monitoring') {
             console.log('\nMonitoring mode active - Will watch market without trading');
         } else {

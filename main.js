@@ -28,9 +28,19 @@ async function initialize() {
     const wallet = initializeWallet();
     const walletInfo = await checkWalletBalance(wallet);
 
-    // Check if wallet has sufficient balance
+    // Get buy amount from config
+    const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
+
+    // Check if wallet has sufficient balance for transactions
     if (!walletInfo.hasMinimumBalance) {
+      console.error(`Insufficient wallet balance (${walletInfo.balance} SOL) for any operations.`);
+      console.log(`Minimum required for transactions: ${BOT_CONFIG.MINIMUM_SOL_BALANCE} SOL`);
+      console.log('You can still run in monitoring mode.');
+    }
+    // Check if wallet has sufficient balance for trading
+    else if (walletInfo.balance < buyAmount) {
       console.error(`Insufficient wallet balance (${walletInfo.balance} SOL) for trading.`);
+      console.log(`Minimum required for trading: ${buyAmount} SOL`);
       console.log('You can still run in monitoring mode.');
     }
 
@@ -39,6 +49,7 @@ async function initialize() {
     console.log(`Public Key: ${walletInfo.publicKey}`);
     console.log(`Balance: ${walletInfo.balance} SOL`);
     console.log(`Minimum Balance Check: ${walletInfo.hasMinimumBalance ? 'PASSED' : 'FAILED'}`);
+    console.log(`Trading Balance Check: ${walletInfo.balance >= buyAmount ? 'PASSED' : 'FAILED'} (min: ${buyAmount} SOL)`);
 
     // Initialize bot mode
     const mode = await initializeMode(walletInfo.balance);
