@@ -367,19 +367,71 @@ async function executeBuy(token, jupiterService, connection) {
     console.log(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
 
     // Execute swap from SOL to token with higher priority fee and longer timeout
-    const txSignature = await jupiterService.executeSwap(
-      SOL_MINT,
-      token.tokenAddress,
-      BUY_AMOUNT_LAMPORTS,
-      {
-        slippageBps: SLIPPAGE_BPS,
-        priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 5000000, priorityLevel: 'high' } },
-        timeout: 60000 // Increase timeout to 60 seconds
+    let txSignature;
+    let transactionTimedOut = false;
+
+    try {
+      txSignature = await jupiterService.executeSwap(
+        SOL_MINT,
+        token.tokenAddress,
+        BUY_AMOUNT_LAMPORTS,
+        {
+          slippageBps: SLIPPAGE_BPS,
+          priorityFee: "auto", // Use auto priority fee to match successful sell parameters
+          dynamicComputeUnitLimit: true, // Use dynamic compute limit
+          timeout: 120000 // Increase timeout to 2 minutes
+        }
+      );
+      console.log(`Transaction confirmed: ${txSignature}`);
+    } catch (error) {
+      // Check if this is a timeout error but the transaction might have gone through
+      if (error.message && error.message.includes('was not confirmed') && error.message.includes('signature')) {
+        // Extract the transaction signature from the error message
+        const signatureMatch = error.message.match(/signature ([A-Za-z0-9]+)/i);
+        if (signatureMatch && signatureMatch[1]) {
+          txSignature = signatureMatch[1];
+          transactionTimedOut = true;
+          console.log(`Transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
+
+          // Wait a bit longer for the transaction to potentially confirm
+          await new Promise(resolve => setTimeout(resolve, 10000));
+
+          // Check if the transaction was confirmed
+          try {
+            const connection = jupiterService.connection;
+            const status = await connection.getSignatureStatus(txSignature, { searchTransactionHistory: true });
+
+            if (status && status.value && status.value.confirmationStatus === 'confirmed') {
+              console.log(`Transaction ${txSignature} was confirmed after timeout!`);
+              // Continue with the process as if the transaction succeeded
+            } else if (status && status.value && status.value.confirmationStatus === 'finalized') {
+              console.log(`Transaction ${txSignature} was finalized after timeout!`);
+              // Continue with the process as if the transaction succeeded
+            } else {
+              console.log(`Transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
+              if (!status || !status.value) {
+                throw new Error(`Transaction not found after timeout`);
+              } else {
+                throw new Error(`Transaction not confirmed after timeout: ${status.value.confirmationStatus}`);
+              }
+            }
+          } catch (statusError) {
+            console.error(`Failed to check transaction status: ${statusError.message}`);
+            throw new Error(`Transaction timed out and status check failed: ${statusError.message}`);
+          }
+        } else {
+          throw error; // Re-throw if we couldn't extract the signature
+        }
+      } else {
+        throw error; // Re-throw if it's not a timeout error
       }
-    );
+    }
 
     // Wait a moment for the transaction to be confirmed and balances to update
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // Wait longer if the transaction timed out but was confirmed later
+    const waitTime = transactionTimedOut ? 15000 : 10000;
+    console.log(`Waiting ${waitTime/1000} seconds for balances to update...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // Get actual token amount from updated balance
     let actualAmount;
@@ -485,7 +537,7 @@ async function executeBuy(token, jupiterService, connection) {
  * @param {Object} currentData - Current token data
  * @param {JupiterService} jupiterService - Jupiter service instance
  * @param {string} reason - Reason for selling
- * @returns {boolean} - Whether sell was successful
+ * @returns {Promise<boolean>} - Whether sell was successful
  */
 async function executeSell(position, currentData, jupiterService, reason) {
   try {
@@ -565,25 +617,75 @@ async function executeSell(position, currentData, jupiterService, reason) {
         throw new Error(`Invalid quote received: ${JSON.stringify(quote)}`);
       }
 
-      // If the amount is very small, increase slippage to ensure the transaction goes through
-      let adjustedSlippage = SLIPPAGE_BPS;
+      // If the amount is very small, log a warning
       if (tokenAmount < 10) {
-        adjustedSlippage = 1000; // 10% slippage for very small amounts
-        console.log(`Small token amount detected, increasing slippage to 10% to ensure transaction success`);
+        console.log(`Small token amount detected (${tokenAmount}), using higher slippage to ensure transaction success`);
       }
 
       // Execute the swap with higher priority fee for sell transactions
-      const txSignature = await jupiterService.executeSwap(
-        position.tokenAddress,
-        SOL_MINT,
-        tokenAmount,
-        {
-          slippageBps: adjustedSlippage,
-          priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 10000000, priorityLevel: 'high' } }
-        }
-      );
+      let txSignature;
+      let transactionTimedOut = false;
 
-      console.log(`Sell transaction confirmed: ${txSignature}`);
+      try {
+        // Use much higher slippage for sell transactions to ensure they go through
+        const sellSlippage = 2000; // 20% slippage for sells
+        console.log(`Using ${sellSlippage/100}% slippage for sell transaction`);
+
+        txSignature = await jupiterService.executeSwap(
+          position.tokenAddress,
+          SOL_MINT,
+          tokenAmount,
+          {
+            slippageBps: sellSlippage,
+            // Use auto priority fee with multiplier to ensure transaction goes through
+            priorityFee: "auto",
+            dynamicComputeUnitLimit: true,
+            timeout: 180000 // Increase timeout to 3 minutes
+          }
+        );
+
+        console.log(`Sell transaction confirmed: ${txSignature}`);
+      } catch (error) {
+        // Check if this is a timeout error but the transaction might have gone through
+        if (error.message && error.message.includes('was not confirmed') && error.message.includes('signature')) {
+          // Extract the transaction signature from the error message
+          const signatureMatch = error.message.match(/signature ([A-Za-z0-9]+)/i);
+          if (signatureMatch && signatureMatch[1]) {
+            txSignature = signatureMatch[1];
+            transactionTimedOut = true;
+            console.log(`Sell transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
+
+            // Wait a bit longer for the transaction to potentially confirm
+            await new Promise(resolve => setTimeout(resolve, 10000));
+
+            // Check if the transaction was confirmed
+            try {
+              const connection = jupiterService.connection;
+              const status = await connection.getSignatureStatus(txSignature, { searchTransactionHistory: true });
+
+              if (status && status.value && (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized')) {
+                console.log(`Sell transaction ${txSignature} was confirmed after timeout!`);
+                // Continue with the process as if the transaction succeeded
+              } else {
+                console.log(`Sell transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
+                throw new Error(`Sell transaction not confirmed after timeout`);
+              }
+            } catch (statusError) {
+              console.error(`Failed to check sell transaction status: ${statusError.message}`);
+              throw error; // Re-throw the original error
+            }
+          } else {
+            throw error; // Re-throw if we couldn't extract the signature
+          }
+        } else {
+          throw error; // Re-throw if it's not a timeout error
+        }
+      }
+
+      // Wait a moment for the transaction to be confirmed and balances to update
+      const waitTime = transactionTimedOut ? 15000 : 10000;
+      console.log(`Waiting ${waitTime/1000} seconds for balances to update...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
 
       // Log the trade with transaction signature
       await logTrade({
@@ -602,12 +704,20 @@ async function executeSell(position, currentData, jupiterService, reason) {
         console.log(`First attempt failed, trying with reduced amount: ${reducedAmount} ${position.symbol}`);
 
         try {
-          // Get quote with higher slippage
+          // Try with even higher slippage for retry
+          const retrySlippage = 3000; // 30% slippage for desperate retry
+          console.log(`Retry attempt with ${retrySlippage/100}% slippage and further reduced amount`);
+
+          // Further reduce amount to 80% of already reduced amount
+          const finalAmount = Math.floor(reducedAmount * 0.8);
+          console.log(`Final retry amount: ${finalAmount} ${position.symbol}`);
+
+          // Get quote with much higher slippage
           const retryQuote = await jupiterService.getSwapQuote(
             position.tokenAddress,
             SOL_MINT,
-            reducedAmount,
-            { slippageBps: 1000 } // Higher slippage for second attempt
+            finalAmount,
+            { slippageBps: retrySlippage } // Much higher slippage for desperate retry
           );
 
           if (!retryQuote || !retryQuote.outAmount) {
@@ -619,21 +729,23 @@ async function executeSell(position, currentData, jupiterService, reason) {
           const retryTxSignature = await jupiterService.executeSwap(
             position.tokenAddress,
             SOL_MINT,
-            reducedAmount,
+            finalAmount,
             {
-              slippageBps: 1000,
-              priorityFee: { priorityLevelWithMaxLamports: { maxLamports: 15000000, priorityLevel: 'high' } }
+              slippageBps: retrySlippage,
+              priorityFee: "auto", // Use auto priority fee
+              dynamicComputeUnitLimit: true, // Use dynamic compute limit
+              timeout: 180000 // 3 minutes timeout
             }
           );
 
           console.log(`Sell transaction with reduced amount confirmed: ${retryTxSignature}`);
 
-          // Log the trade with transaction signature
+          // Log the trade with transaction signature using the final amount that was actually sold
           await logTrade({
             action: 'SELL',
             symbol: position.symbol,
             price: currentData.priceUsd,
-            amount: reducedAmount,
+            amount: finalAmount, // Use the final amount that was actually sold
             profitLoss: ((currentData.priceUsd - position.entryPrice) / position.entryPrice) * 100,
             txSignature: retryTxSignature,
             reason: reason + ' (reduced amount)'
@@ -678,7 +790,7 @@ function updatePosition(position, currentData) {
  * @param {Connection} connection - Solana connection
  * @returns {Object|null} - Current token data or null if fetch failed
  */
-async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService, connection) {
+async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService) {
   try {
     console.log(`Fetching current data for ${symbol} (${tokenAddress})...`);
 
@@ -761,7 +873,7 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
  * @param {DexScreenerService} dexService - DexScreener service instance
  * @param {Connection} connection - Solana connection
  */
-async function monitorPositions(jupiterService, dexService, connection) {
+async function monitorPositions(jupiterService, dexService) {
   console.log(`Monitoring ${positions.size} open positions...`);
 
   // If no positions, clear the interval
@@ -779,8 +891,7 @@ async function monitorPositions(jupiterService, dexService, connection) {
         tokenAddress,
         position.poolAddress,
         position.symbol,
-        dexService,
-        connection
+        dexService
       );
 
       if (!currentData) {
@@ -825,7 +936,7 @@ async function monitorPositions(jupiterService, dexService, connection) {
  * @param {DexScreenerService} dexService - DexScreener service instance
  * @param {Connection} connection - Solana connection
  */
-async function processTokens(finalTokens, jupiterService, dexService, connection) {
+async function processTokens(finalTokens, jupiterService) {
   console.log(`Processing ${finalTokens.length} tokens for potential trades...`);
 
   // Skip if we already have a position (only allowing one at a time)
@@ -848,7 +959,7 @@ async function processTokens(finalTokens, jupiterService, dexService, connection
       console.log(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
 
       // Execute buy with connection for token balance checking
-      const position = await executeBuy(token, jupiterService, connection);
+      const position = await executeBuy(token, jupiterService, jupiterService.connection);
       if (position) {
         // Add to positions
         positions.set(token.tokenAddress, position);
@@ -895,7 +1006,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
     const jupiterService = new JupiterService(connection, wallet);
 
     // Process tokens for potential trades
-    await processTokens(finalTokens, jupiterService, dexService, connection);
+    await processTokens(finalTokens, jupiterService);
 
     // Set up position monitoring only if we have positions
     if (positions.size > 0) {
@@ -908,7 +1019,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
 
       // Set up new monitoring interval
       monitoringInterval = setInterval(
-        () => monitorPositions(jupiterService, dexService, connection),
+        () => monitorPositions(jupiterService, dexService),
         PRICE_CHECK_INTERVAL
       );
 
@@ -921,7 +1032,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
     return {
       success: true,
       positionsOpened: positions.size,
-      positions: Array.from(positions.entries()).map(([address, pos]) => ({
+      positions: Array.from(positions.entries()).map(([_, pos]) => ({
         symbol: pos.symbol,
         entryPrice: pos.entryPrice,
         amount: pos.amount,
@@ -951,7 +1062,7 @@ async function stopTrading() {
     // Log current positions for reference
     if (positions.size > 0) {
       console.log(`WARNING: ${positions.size} positions are still open:`);
-      for (const [address, position] of positions.entries()) {
+      for (const [_, position] of positions.entries()) {
         console.log(`- ${position.symbol}: ${position.amount} tokens at $${position.entryPrice}`);
       }
       console.log('These positions will need to be managed manually or when the bot restarts.');
