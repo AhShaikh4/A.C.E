@@ -1,7 +1,7 @@
 //trading.js
 
 const fs = require('fs').promises;
-const { PublicKey, Connection, ParsedAccountData } = require('@solana/web3.js');
+const { PublicKey, Connection } = require('@solana/web3.js');
 const { initializeConnection, initializeWallet, checkWalletBalance } = require('./wallet');
 const JupiterService = require('./src/services/jupiter');
 const { DexScreenerService } = require('./src/services/dexscreener');
@@ -15,10 +15,11 @@ const { BOT_CONFIG } = require('./config');
 
 // Constants
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
-const BUY_AMOUNT_LAMPORTS = BOT_CONFIG.BUY_AMOUNT_SOL * 1000000000; // Convert SOL to lamports
+const CONFIGURED_BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Configured buy amount in SOL
 const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS || 1; // Maximum number of concurrent positions
 const PRICE_CHECK_INTERVAL = 30000; // 30 seconds
 const SLIPPAGE_BPS = BOT_CONFIG.SLIPPAGE_BPS || 500; // Slippage tolerance
+const MINIMUM_SOL_RESERVE = 0.001; // Minimum SOL to keep in wallet for transaction fees
 
 // Position tracking
 const positions = new Map();
@@ -287,20 +288,83 @@ async function executeBuy(token, jupiterService, connection) {
 
     // Get pre-swap balance to compare later
     let preSwapBalance = 0;
+
+    // Try to get balance directly from wallet first (most reliable)
     try {
-      const balances = await jupiterService.getBalances();
-      const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
-      preSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
-      console.log(`Pre-swap balance of ${token.symbol}: ${preSwapBalance}`);
+      const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+        jupiterService.wallet.publicKey,
+        { mint: new PublicKey(token.tokenAddress) }
+      );
+
+      if (tokenAccount.value.length > 0) {
+        const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
+        preSwapBalance = parseFloat(balance.uiAmount);
+        console.log(`Pre-swap direct wallet balance of ${token.symbol}: ${preSwapBalance}`);
+      } else {
+        console.log(`No token account found for ${token.symbol}, assuming zero balance`);
+        preSwapBalance = 0;
+      }
+    } catch (walletError) {
+      console.warn(`Failed to get direct wallet balance: ${walletError.message}`);
+
+      // Fallback to Jupiter API
+      try {
+        const balances = await jupiterService.getBalances();
+        if (balances && balances.tokens && Array.isArray(balances.tokens)) {
+          const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
+          preSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
+          console.log(`Pre-swap Jupiter API balance of ${token.symbol}: ${preSwapBalance}`);
+        } else {
+          console.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
+          preSwapBalance = 0;
+        }
+      } catch (jupiterError) {
+        console.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
+        preSwapBalance = 0;
+      }
+    }
+
+    // Check wallet SOL balance and adjust buy amount if needed
+    let buyAmountSOL = CONFIGURED_BUY_AMOUNT_SOL;
+    let buyAmountLamports;
+
+    try {
+      // Get current SOL balance
+      const solBalance = await connection.getBalance(jupiterService.wallet.publicKey);
+      const solBalanceSOL = solBalance / 1000000000; // Convert lamports to SOL
+      console.log(`Current wallet SOL balance: ${solBalanceSOL} SOL`);
+
+      // Calculate available SOL (keeping reserve for fees)
+      const availableSOL = solBalanceSOL - MINIMUM_SOL_RESERVE;
+
+      if (availableSOL <= 0) {
+        throw new Error(`Insufficient SOL balance for trading. Current: ${solBalanceSOL} SOL, Minimum required: ${MINIMUM_SOL_RESERVE} SOL`);
+      }
+
+      // Adjust buy amount if wallet has less than configured amount
+      if (availableSOL < CONFIGURED_BUY_AMOUNT_SOL) {
+        buyAmountSOL = availableSOL * 0.95; // Use 95% of available SOL to leave room for fees
+        console.log(`Adjusting buy amount to ${buyAmountSOL} SOL based on available balance`);
+      }
+
+      // Convert to lamports
+      buyAmountLamports = Math.floor(buyAmountSOL * 1000000000);
+
+      if (buyAmountLamports < 1000000) { // Minimum 0.001 SOL
+        throw new Error(`Buy amount too small: ${buyAmountSOL} SOL. Minimum required: 0.001 SOL`);
+      }
+
+      console.log(`Executing swap with ${buyAmountSOL} SOL (${buyAmountLamports} lamports)`);
     } catch (error) {
-      console.warn(`Failed to get pre-swap balance: ${error.message}`);
+      console.error(`Failed to check wallet balance: ${error.message}`);
+      return null;
     }
 
     // Execute swap from SOL to token
     const txSignature = await jupiterService.executeSwap(
       SOL_MINT,
       token.tokenAddress,
-      BUY_AMOUNT_LAMPORTS,
+      buyAmountLamports,
       { slippageBps: SLIPPAGE_BPS }
     );
 
@@ -338,7 +402,7 @@ async function executeBuy(token, jupiterService, connection) {
         } else {
           console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       }
     } catch (error) {
@@ -358,12 +422,12 @@ async function executeBuy(token, jupiterService, connection) {
           actualAmount = directBalance;
         } else {
           // Last resort fallback
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       } catch (secondError) {
         console.warn(`Failed to get direct wallet balance: ${secondError.message}`);
         // Last resort fallback
-        actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
       }
     }
 
@@ -371,7 +435,7 @@ async function executeBuy(token, jupiterService, connection) {
     if (actualAmount > 1000000000) {
       console.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
       // Cap to a reasonable value based on the transaction amount
-      actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
+      actualAmount = (buyAmountLamports * 0.95) / (token.priceUsd * 1.05);
     }
 
     console.log(`Final amount used for position: ${actualAmount}`);
