@@ -5,7 +5,6 @@ const path = require('path');
 const chalk = require('chalk');
 const winston = require('winston');
 const { format } = winston;
-const DailyRotateFile = require('winston-daily-rotate-file');
 const Table = require('cli-table3');
 const ora = require('ora').default;
 const figlet = require('figlet');
@@ -57,7 +56,10 @@ const LOG_LEVELS = {
   ERROR: { value: 3, color: chalk.red, icon: '❌' },
   TRADE: { value: 1, color: chalk.green, icon: '💰' },
   ANALYSIS: { value: 1, color: chalk.magenta, icon: '📊' },
-  SYSTEM: { value: 1, color: chalk.gray, icon: '🔧' }
+  SYSTEM: { value: 1, color: chalk.gray, icon: '🔧' },
+  USER: { value: 1, color: chalk.blue, icon: '👤' },
+  WALLET: { value: 1, color: chalk.yellow, icon: '💼' },
+  DETAILED: { value: 0, color: chalk.gray, icon: '🔎' }
 };
 
 // Current log level from config
@@ -68,9 +70,8 @@ const logFormat = format.printf(({ timestamp, level, message }) => {
   return `[${timestamp}] [${level}] ${message}`;
 });
 
-// Create Winston logger
+// Create Winston logger with specific log files
 const logger = winston.createLogger({
-  level: 'info',
   format: format.combine(
     format.timestamp({
       format: () => {
@@ -80,44 +81,43 @@ const logger = winston.createLogger({
     logFormat
   ),
   transports: [
-    // Info log with daily rotation
-    new DailyRotateFile({
-      filename: path.join(logDir, 'info-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      level: 'info',
-      maxSize: '20m',
-      maxFiles: '14d'
-    }),
-    // Error log with daily rotation
-    new DailyRotateFile({
-      filename: path.join(logDir, 'error-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
+    // Errors log - All error messages
+    new winston.transports.File({
+      filename: path.join(logDir, 'errors.log'),
       level: 'error',
-      maxSize: '20m',
-      maxFiles: '14d'
+      maxsize: 20971520, // 20MB
+      maxFiles: 10
     }),
-    // Debug log with daily rotation (only if debug is enabled)
-    ...(CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.DEBUG.value ? [
-      new DailyRotateFile({
-        filename: path.join(logDir, 'debug-%DATE%.log'),
-        datePattern: 'YYYY-MM-DD',
-        level: 'debug',
-        maxSize: '20m',
-        maxFiles: '7d'
-      })
-    ] : []),
-    // Special logs for trades and analysis
-    new DailyRotateFile({
-      filename: path.join(logDir, 'trades-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '20m',
-      maxFiles: '30d'
+    // Analyzed log - Analysis results for tokens
+    new winston.transports.File({
+      filename: path.join(logDir, 'analyzed.log'),
+      maxsize: 20971520,
+      maxFiles: 10
     }),
-    new DailyRotateFile({
-      filename: path.join(logDir, 'analysis-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: '20m',
-      maxFiles: '14d'
+    // Detailed log - Detailed step-by-step logging
+    new winston.transports.File({
+      filename: path.join(logDir, 'detailed.log'),
+      level: 'debug',
+      maxsize: 20971520,
+      maxFiles: 5
+    }),
+    // User log - User-friendly formatted logs
+    new winston.transports.File({
+      filename: path.join(logDir, 'user.log'),
+      maxsize: 20971520,
+      maxFiles: 5
+    }),
+    // Trades log - Trade records
+    new winston.transports.File({
+      filename: path.join(logDir, 'trades.log'),
+      maxsize: 20971520,
+      maxFiles: 10
+    }),
+    // Wallet log - Wallet performance and PnL tracking
+    new winston.transports.File({
+      filename: path.join(logDir, 'wallet.log'),
+      maxsize: 20971520,
+      maxFiles: 10
     })
   ]
 });
@@ -128,13 +128,24 @@ const logger = winston.createLogger({
 function clearLogFiles() {
   const clearSpinner = createSpinner('Clearing log files...').start();
   try {
-    // Get all log files in the directory
-    const files = fs.readdirSync(logDir);
+    // Define all log files to clear
+    const logFiles = [
+      'errors.log',
+      'analyzed.log',
+      'detailed.log',
+      'user.log',
+      'trades.log',
+      'wallet.log'
+    ];
 
     // Delete each log file
-    files.forEach(file => {
-      if (file.endsWith('.log')) {
-        fs.unlinkSync(path.join(logDir, file));
+    logFiles.forEach(file => {
+      const filePath = path.join(logDir, file);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      } else {
+        // Create empty file if it doesn't exist
+        fs.writeFileSync(filePath, '');
       }
     });
 
@@ -146,6 +157,107 @@ function clearLogFiles() {
 
 // Clear log files on startup
 clearLogFiles();
+
+/**
+ * Log to the detailed log file
+ * @param {string} message - Message to log
+ */
+function logDetailed(message) {
+  if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.DETAILED.value) {
+    const formattedMessage = `DETAILED: ${message}`;
+    logger.debug(formattedMessage);
+    // Only show in console if in debug mode
+    if (CURRENT_LOG_LEVEL_VALUE === 0) {
+      console.log(formatConsoleMessage('DETAILED', message));
+    }
+  }
+}
+
+/**
+ * Log to the user log file with user-friendly formatting
+ * @param {string} message - Message to log
+ */
+function logUser(message) {
+  const formattedMessage = `USER: ${message}`;
+  logger.info(formattedMessage);
+  fs.appendFileSync(path.join(logDir, 'user.log'), `[${getESTTimestamp()}] ${formattedMessage}\n`);
+  console.log(formatConsoleMessage('USER', message));
+}
+
+/**
+ * Log analyzed token data to the analyzed log file
+ * @param {Object} data - Token analysis data
+ */
+function logAnalyzed(data) {
+  const { tokenCount, topTokens, duration } = data;
+
+  // Format the analyzed token data
+  const topTokensStr = topTokens.map((t, i) =>
+    `${i+1}. ${t.symbol}: Score ${t.score.toFixed(2)}, Price $${t.priceUsd.toFixed(8)}, ` +
+    `Change 1h ${t.priceChange.h1.toFixed(2)}%, 24h ${t.priceChange.h24.toFixed(2)}%`
+  ).join('\n  ');
+
+  const logEntry = `[${getESTTimestamp()}] Analysis Results\n` +
+                  `  Found ${tokenCount} tokens after analysis\n` +
+                  `  Duration: ${duration}ms\n` +
+                  `  Top tokens:\n  ${topTokensStr}\n\n`;
+
+  // Log to analyzed.log file
+  fs.appendFileSync(path.join(logDir, 'analyzed.log'), logEntry);
+
+  // Also log to console
+  console.log(formatConsoleMessage('ANALYSIS', `Completed in ${duration}ms`));
+  console.log(chalk.cyan(`Found ${tokenCount} tokens after analysis`));
+}
+
+/**
+ * Log trade data to the trades log file
+ * @param {Object} tradeDetails - Details of the trade
+ */
+function logTrade(tradeDetails) {
+  const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
+
+  // Format the trade data
+  const logEntry = `[${getESTTimestamp()}] ${action.toUpperCase()} ${symbol}\n` +
+                  `  Price: $${price}\n` +
+                  `  Amount: ${amount}\n` +
+                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
+                  `  Reason: ${reason || 'N/A'}\n` +
+                  `  Transaction: ${txSignature || 'N/A'}\n\n`;
+
+  // Log to trades.log file
+  fs.appendFileSync(path.join(logDir, 'trades.log'), logEntry);
+
+  // Also log to console with enhanced formatting
+  console.log(formatConsoleMessage('TRADE', `${action.toUpperCase()} ${symbol} at $${price}`));
+}
+
+/**
+ * Log wallet performance data to the wallet log file
+ * @param {Object} walletData - Wallet performance data
+ */
+function logWallet(walletData) {
+  const { balance, positions, totalPnl, timestamp } = walletData;
+
+  // Format the wallet data
+  const positionsStr = positions.length > 0
+    ? positions.map(p =>
+      `  ${p.symbol}: ${p.amount} tokens at $${p.entryPrice}, ` +
+      `Current: $${p.currentPrice}, PnL: ${p.profitLoss > 0 ? '+' : ''}${p.profitLoss.toFixed(2)}%`
+    ).join('\n')
+    : '  No open positions';
+
+  const logEntry = `[${timestamp || getESTTimestamp()}] Wallet Status\n` +
+                  `  Balance: ${balance} SOL\n` +
+                  `  Total PnL: ${totalPnl > 0 ? '+' : ''}${totalPnl.toFixed(2)}%\n` +
+                  `  Positions:\n${positionsStr}\n\n`;
+
+  // Log to wallet.log file
+  fs.appendFileSync(path.join(logDir, 'wallet.log'), logEntry);
+
+  // Also log to console
+  console.log(formatConsoleMessage('WALLET', `Balance: ${balance} SOL, PnL: ${totalPnl > 0 ? '+' : ''}${totalPnl.toFixed(2)}%`));
+}
 
 /**
  * Get current timestamp in EST timezone
@@ -316,6 +428,8 @@ function debug(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.DEBUG.value) {
     console.log(formatConsoleMessage('DEBUG', message));
     logger.debug(message);
+    // Also log to detailed.log
+    logDetailed(message);
   }
 }
 
@@ -327,6 +441,8 @@ function info(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.INFO.value) {
     console.log(formatConsoleMessage('INFO', message));
     logger.info(message);
+    // Also log to user.log for important info
+    logUser(message);
   }
 }
 
@@ -338,6 +454,8 @@ function warn(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.WARN.value) {
     console.log(formatConsoleMessage('WARN', message));
     logger.warn(message);
+    // Also log to user.log for important warnings
+    logUser(`WARNING: ${message}`);
   }
 }
 
@@ -353,6 +471,14 @@ function error(message, error) {
     if (errorDetails) {
       console.log(chalk.red(errorDetails));
     }
+
+    // Log to errors.log
+    const errorEntry = `[${getESTTimestamp()}] ERROR: ${message}${errorDetails}\n`;
+    fs.appendFileSync(path.join(logDir, 'errors.log'), errorEntry);
+
+    // Also log to user.log for important errors
+    logUser(`ERROR: ${message}`);
+
     logger.error(message + errorDetails);
   }
 }
@@ -399,16 +525,23 @@ function trade(tradeDetails) {
   console.log('\n' + formatConsoleMessage('TRADE', `${action.toUpperCase()} ${symbol} at $${price}`));
   console.log(table.toString());
 
-  // Log to file
-  const logEntry = `[${getESTTimestamp()}] ${action.toUpperCase()} ${symbol}\n` +
-                  `  Price: $${price}\n` +
-                  `  Amount: ${amount}\n` +
-                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
-                  `  Reason: ${reason || 'N/A'}\n` +
-                  `  Transaction: ${txSignature || 'N/A'}\n\n`;
+  // Use our specialized logTrade function
+  logTrade(tradeDetails);
+
+  // Also log to user.log for important trade info
+  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}`);
+
+  // Log to wallet log if it's a completed trade with P/L
+  if (profitLoss) {
+    logWallet({
+      balance: null, // Will be updated elsewhere
+      positions: [],
+      totalPnl: profitLoss,
+      timestamp: getESTTimestamp()
+    });
+  }
 
   logger.info(`TRADE: ${action.toUpperCase()} ${symbol} at $${price}`);
-  fs.appendFileSync(path.join(logDir, 'trades.log'), logEntry);
 }
 
 /**
@@ -459,19 +592,13 @@ function analysis(analysisDetails) {
   console.log(chalk.cyan(`Found ${tokenCount} tokens after analysis`));
   console.log(table.toString() + '\n');
 
-  // Log to file
-  const topTokensStr = topTokens.map((t, i) =>
-    `${i+1}. ${t.symbol}: Score ${t.score.toFixed(2)}, Price $${t.priceUsd.toFixed(8)}, ` +
-    `Change 1h ${t.priceChange.h1.toFixed(2)}%, 24h ${t.priceChange.h24.toFixed(2)}%`
-  ).join('\n  ');
+  // Use our specialized logAnalyzed function
+  logAnalyzed(analysisDetails);
 
-  const logEntry = `[${getESTTimestamp()}] Analysis Results\n` +
-                  `  Found ${tokenCount} tokens after analysis\n` +
-                  `  Duration: ${duration}ms\n` +
-                  `  Top tokens:\n  ${topTokensStr}\n\n`;
+  // Also log to user.log for important analysis info
+  logUser(`Analysis completed in ${duration}ms. Found ${tokenCount} tokens, top: ${topTokens.map(t => t.symbol).join(', ')}`);
 
   logger.info(`ANALYSIS: Found ${tokenCount} tokens, top: ${topTokens.map(t => t.symbol).join(', ')}`);
-  fs.appendFileSync(path.join(logDir, 'analysis.log'), logEntry);
 }
 
 /**
@@ -481,9 +608,12 @@ function analysis(analysisDetails) {
 function system(message) {
   console.log(formatConsoleMessage('SYSTEM', message));
   logger.info(`SYSTEM: ${message}`);
+  // Also log to user.log for important system messages
+  logUser(`SYSTEM: ${message}`);
 }
 
 module.exports = {
+  // Standard logging functions
   debug,
   info,
   warn,
@@ -491,6 +621,15 @@ module.exports = {
   trade,
   analysis,
   system,
+
+  // Specialized logging functions
+  logDetailed,
+  logUser,
+  logAnalyzed,
+  logTrade,
+  logWallet,
+
+  // UI helpers
   startSpinner,
   updateSpinner,
   succeedSpinner,
