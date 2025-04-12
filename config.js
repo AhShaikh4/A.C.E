@@ -10,12 +10,16 @@ const BOT_CONFIG = {
   // Trading settings
   TRADING_ENABLED: true, // Master switch for trading
   MAX_POSITIONS: 1, // Maximum number of concurrent positions
-  POSITION_CHECK_INTERVAL_SECONDS: 5, // How often to check positions (in seconds)
+  POSITION_CHECK_INTERVAL_SECONDS: 2, // How often to check positions (in seconds)
 
   // Token filtering settings
   MIN_LIQUIDITY_USD: 20000, // Minimum liquidity in USD
   MIN_VOLUME_USD: 20000, // Minimum 24h volume in USD
   MIN_SCORE: 60, // Minimum score (0-100) for buy consideration
+
+  // Blacklist settings
+  BLACKLIST_ENABLED: true, // Enable token blacklist feature
+  BLACKLIST_FILE: './data/blacklist.json', // File to store blacklisted tokens
 
   // Trade execution settings
   BUY_AMOUNT_SOL: 0.01, // Amount of SOL to use per trade

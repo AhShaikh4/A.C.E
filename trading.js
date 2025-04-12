@@ -10,6 +10,9 @@ const { getTokenHoldersHistorical } = require('./src/services/morali');
 // Import functions from TA.js
 const { fetchOHLCV, calculateIndicators } = require('./TA');
 
+// Import blacklist functionality
+const { isBlacklisted } = require('./blacklist');
+
 // Import config
 const { BOT_CONFIG } = require('./config');
 
@@ -286,6 +289,12 @@ async function logTrade(tradeDetails) {
 async function executeBuy(token, jupiterService, connection) {
   try {
     console.log(`Attempting to buy ${token.symbol} (${token.tokenAddress})`);
+
+    // Double-check if token is blacklisted (safety measure)
+    if (isBlacklisted(token.tokenAddress)) {
+      console.log(`Aborting purchase of blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      return null;
+    }
 
     // Get pre-swap balance to compare later
     let preSwapBalance = 0;
@@ -969,6 +978,12 @@ async function processTokens(finalTokens, jupiterService) {
   for (const token of sortedTokens) {
     // Skip if already in a position for this token
     if (positions.has(token.tokenAddress)) {
+      continue;
+    }
+
+    // Skip if token is blacklisted
+    if (isBlacklisted(token.tokenAddress)) {
+      console.log(`Skipping blacklisted token: ${token.symbol} (${token.tokenAddress})`);
       continue;
     }
 

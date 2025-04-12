@@ -11,6 +11,7 @@ const trading = require('./trading');
 const { DexScreenerService } = require('./src/services/dexscreener');
 const { BOT_CONFIG } = require('./config');
 const logger = require('./logger');
+const { initializeBlacklist } = require('./blacklist');
 
 // Display welcome banner
 logger.displayBanner('Solana Memecoin Bot', 'blue');
@@ -78,6 +79,9 @@ async function initialize() {
     // Initialize services
     logger.startSpinner('Initializing services...');
     const dexService = new DexScreenerService();
+
+    // Initialize blacklist
+    await initializeBlacklist();
     logger.succeedSpinner('Services initialized successfully');
 
     return {

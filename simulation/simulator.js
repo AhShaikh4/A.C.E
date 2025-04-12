@@ -23,6 +23,7 @@ const { meetsBuyCriteria, meetsSellCriteria } = require('../trading');
 const { getTokenHoldersHistorical } = require('../src/services/morali');
 const { DexScreenerService } = require('../src/services/dexscreener');
 const { BOT_CONFIG } = require('../config');
+const { isBlacklisted, initializeBlacklist } = require('../blacklist');
 
 // Import simulation utilities
 const { logTrade, updateStats, logSimulationStats, generateRandomString, withFallback, ensureLogDirectory, getESTTimestamp } = require('./utils');
@@ -274,6 +275,12 @@ function simulationMeetsSellCriteria(position, currentData) {
 async function executeBuy(token) {
   try {
     console.log(`Simulating buy for ${token.symbol} (${token.tokenAddress})`);
+
+    // Double-check if token is blacklisted (safety measure)
+    if (isBlacklisted(token.tokenAddress)) {
+      console.log(`Aborting purchase of blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      return null;
+    }
 
     if (!token.priceUsd || token.priceUsd <= 0) {
       throw new Error(`Invalid token price: ${token.priceUsd}`);
@@ -580,6 +587,12 @@ async function processTokens(tokens) {
       continue;
     }
 
+    // Skip if token is blacklisted
+    if (isBlacklisted(token.tokenAddress)) {
+      console.log(`Skipping blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      continue;
+    }
+
     // Check buy criteria
     if (simulationMeetsBuyCriteria(token)) {
       console.log(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
@@ -608,6 +621,9 @@ async function processTokens(tokens) {
 async function simulateTrading(tokens, dexService) {
   try {
     console.log('Initializing trading strategy simulation...');
+
+    // Initialize blacklist
+    await initializeBlacklist();
 
     // Check simulated wallet balance
     const walletInfo = simulateWalletBalance();

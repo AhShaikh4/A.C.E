@@ -7,6 +7,7 @@ const Bottleneck = require('bottleneck');
 const { DexScreenerService } = require('./src/services/dexscreener.js');
 const { fetchTrendingPools } = require('./src/services/gecko.js');
 const { getTokenHolders, getTokenHoldersHistorical, getTokenAnalytics, getSnipers } = require('./src/services/morali.js');
+const { isBlacklisted, initializeBlacklist } = require('./blacklist');
 
 const SMA = technicalindicators.SMA;
 const EMA = technicalindicators.EMA;
@@ -496,6 +497,9 @@ async function performTA(dexServiceParam) {
   const network = 'solana';
   const dexService = dexServiceParam || new DexScreenerService();
 
+  // Initialize blacklist
+  await initializeBlacklist();
+
   // Step 1: Fetch DexScreener Boosted Tokens
   console.log('Step 1: Fetching and filtering boosted tokens from DexScreener...');
   const allBoostedTokens = await dexService.getBoostedSolanaTokens();
@@ -521,6 +525,12 @@ async function performTA(dexServiceParam) {
       const priceChange24h = pair.priceChange?.h24 || 0;
       const liquidityUsd = pair.liquidity?.usd || 0;
       const volume24h = pair.volume?.h24 || 0;
+
+      // Check if token is blacklisted
+      if (isBlacklisted(token.tokenAddress)) {
+        console.log(`Skipping blacklisted token: ${token.symbol || 'Unknown'} (${token.tokenAddress})`);
+        return false;
+      }
 
       // Skip logging individual token filtering
       return (
@@ -549,6 +559,14 @@ async function performTA(dexServiceParam) {
 
   // Filter trending pools by criteria
   const filteredTrendingPools = trendingPools.filter(pool => {
+    const tokenAddress = pool.relationships.base_token.data.id.split('_')[1];
+
+    // Check if token is blacklisted
+    if (isBlacklisted(tokenAddress)) {
+      console.log(`Skipping blacklisted token from trending pools: ${pool.attributes.name || 'Unknown'} (${tokenAddress})`);
+      return false;
+    }
+
     return (
       parseFloat(pool.attributes.reserve_in_usd || 0) > 5000 && // Lower minimum liquidity
       parseFloat(pool.attributes.volume_usd?.h6 || 0) > 1000 // Lower minimum volume
