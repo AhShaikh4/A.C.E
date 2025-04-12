@@ -164,8 +164,10 @@ clearLogFiles();
  */
 function logDetailed(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.DETAILED.value) {
-    const formattedMessage = `DETAILED: ${message}`;
-    logger.debug(formattedMessage);
+    // Write directly to detailed.log file
+    const formattedMessage = `[${getESTTimestamp()}] DETAILED: ${message}\n`;
+    fs.appendFileSync(path.join(logDir, 'detailed.log'), formattedMessage);
+
     // Only show in console if in debug mode
     if (CURRENT_LOG_LEVEL_VALUE === 0) {
       console.log(formatConsoleMessage('DETAILED', message));
@@ -178,9 +180,11 @@ function logDetailed(message) {
  * @param {string} message - Message to log
  */
 function logUser(message) {
-  const formattedMessage = `USER: ${message}`;
-  logger.info(formattedMessage);
-  fs.appendFileSync(path.join(logDir, 'user.log'), `[${getESTTimestamp()}] ${formattedMessage}\n`);
+  // Write directly to user.log file
+  const formattedMessage = `[${getESTTimestamp()}] USER: ${message}\n`;
+  fs.appendFileSync(path.join(logDir, 'user.log'), formattedMessage);
+
+  // Always show user messages in console
   console.log(formatConsoleMessage('USER', message));
 }
 
@@ -204,10 +208,6 @@ function logAnalyzed(data) {
 
   // Log to analyzed.log file
   fs.appendFileSync(path.join(logDir, 'analyzed.log'), logEntry);
-
-  // Also log to console
-  console.log(formatConsoleMessage('ANALYSIS', `Completed in ${duration}ms`));
-  console.log(chalk.cyan(`Found ${tokenCount} tokens after analysis`));
 }
 
 /**
@@ -227,9 +227,6 @@ function logTrade(tradeDetails) {
 
   // Log to trades.log file
   fs.appendFileSync(path.join(logDir, 'trades.log'), logEntry);
-
-  // Also log to console with enhanced formatting
-  console.log(formatConsoleMessage('TRADE', `${action.toUpperCase()} ${symbol} at $${price}`));
 }
 
 /**
@@ -248,15 +245,12 @@ function logWallet(walletData) {
     : '  No open positions';
 
   const logEntry = `[${timestamp || getESTTimestamp()}] Wallet Status\n` +
-                  `  Balance: ${balance} SOL\n` +
-                  `  Total PnL: ${totalPnl > 0 ? '+' : ''}${totalPnl.toFixed(2)}%\n` +
+                  `  Balance: ${balance !== null ? balance + ' SOL' : 'N/A'}\n` +
+                  `  Total PnL: ${totalPnl !== null ? (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2) + '%' : 'N/A'}\n` +
                   `  Positions:\n${positionsStr}\n\n`;
 
   // Log to wallet.log file
   fs.appendFileSync(path.join(logDir, 'wallet.log'), logEntry);
-
-  // Also log to console
-  console.log(formatConsoleMessage('WALLET', `Balance: ${balance} SOL, PnL: ${totalPnl > 0 ? '+' : ''}${totalPnl.toFixed(2)}%`));
 }
 
 /**
@@ -426,9 +420,10 @@ function displayBanner(text, color = 'blue') {
  */
 function debug(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.DEBUG.value) {
+    // Log to console
     console.log(formatConsoleMessage('DEBUG', message));
-    logger.debug(message);
-    // Also log to detailed.log
+
+    // Log to detailed.log
     logDetailed(message);
   }
 }
@@ -439,9 +434,10 @@ function debug(message) {
  */
 function info(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.INFO.value) {
+    // Log to console
     console.log(formatConsoleMessage('INFO', message));
-    logger.info(message);
-    // Also log to user.log for important info
+
+    // Log to user.log for important info
     logUser(message);
   }
 }
@@ -452,9 +448,10 @@ function info(message) {
  */
 function warn(message) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.WARN.value) {
+    // Log to console
     console.log(formatConsoleMessage('WARN', message));
-    logger.warn(message);
-    // Also log to user.log for important warnings
+
+    // Log to user.log for important warnings
     logUser(`WARNING: ${message}`);
   }
 }
@@ -467,6 +464,8 @@ function warn(message) {
 function error(message, error) {
   if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.ERROR.value) {
     const errorDetails = error ? `\n${error.stack || error.message || error}` : '';
+
+    // Log to console
     console.log(formatConsoleMessage('ERROR', message));
     if (errorDetails) {
       console.log(chalk.red(errorDetails));
@@ -478,8 +477,6 @@ function error(message, error) {
 
     // Also log to user.log for important errors
     logUser(`ERROR: ${message}`);
-
-    logger.error(message + errorDetails);
   }
 }
 
@@ -525,7 +522,7 @@ function trade(tradeDetails) {
   console.log('\n' + formatConsoleMessage('TRADE', `${action.toUpperCase()} ${symbol} at $${price}`));
   console.log(table.toString());
 
-  // Use our specialized logTrade function
+  // Use our specialized logTrade function for file logging
   logTrade(tradeDetails);
 
   // Also log to user.log for important trade info
@@ -540,8 +537,6 @@ function trade(tradeDetails) {
       timestamp: getESTTimestamp()
     });
   }
-
-  logger.info(`TRADE: ${action.toUpperCase()} ${symbol} at $${price}`);
 }
 
 /**
@@ -592,13 +587,11 @@ function analysis(analysisDetails) {
   console.log(chalk.cyan(`Found ${tokenCount} tokens after analysis`));
   console.log(table.toString() + '\n');
 
-  // Use our specialized logAnalyzed function
+  // Use our specialized logAnalyzed function for file logging
   logAnalyzed(analysisDetails);
 
   // Also log to user.log for important analysis info
   logUser(`Analysis completed in ${duration}ms. Found ${tokenCount} tokens, top: ${topTokens.map(t => t.symbol).join(', ')}`);
-
-  logger.info(`ANALYSIS: Found ${tokenCount} tokens, top: ${topTokens.map(t => t.symbol).join(', ')}`);
 }
 
 /**
@@ -606,8 +599,9 @@ function analysis(analysisDetails) {
  * @param {string} message - System message to log
  */
 function system(message) {
+  // Log to console
   console.log(formatConsoleMessage('SYSTEM', message));
-  logger.info(`SYSTEM: ${message}`);
+
   // Also log to user.log for important system messages
   logUser(`SYSTEM: ${message}`);
 }
