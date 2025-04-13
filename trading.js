@@ -230,8 +230,48 @@ function meetsSellCriteria(position, currentData) {
   const entryPrice = position.entryPrice;
   const profitPercent = ((currentPrice - entryPrice) / entryPrice) * 100; // Convert to percentage
   const highestPrice = position.highestPrice;
-  const trailingStopPrice = highestPrice - (2.5 * (indicators.atr || 0));
   const { SELL_CRITERIA } = BOT_CONFIG;
+
+  // Enhanced trailing stop calculation
+  // 1. Dynamic ATR Multiplier based on profit level
+  let atrMultiplier = SELL_CRITERIA.TRAILING_STOP?.ATR_MULTIPLIER || 2.5; // Default if not configured
+
+  // Find the appropriate multiplier based on profit level
+  if (SELL_CRITERIA.TRAILING_STOP?.DYNAMIC_ATR_MULTIPLIERS) {
+    // Sort multipliers by profit percent (highest first)
+    const sortedMultipliers = [...SELL_CRITERIA.TRAILING_STOP.DYNAMIC_ATR_MULTIPLIERS]
+      .sort((a, b) => b.PROFIT_PERCENT - a.PROFIT_PERCENT);
+
+    // Find the first multiplier where profit is >= the threshold
+    for (const level of sortedMultipliers) {
+      if (profitPercent >= level.PROFIT_PERCENT) {
+        atrMultiplier = level.MULTIPLIER;
+        break;
+      }
+    }
+  }
+
+  // 2. Calculate ATR-based trailing stop
+  const atrTrailingStop = highestPrice - (atrMultiplier * (indicators.atr || 0));
+
+  // 3. Calculate percentage-based trailing stop
+  const trailingStopPercent = SELL_CRITERIA.TRAILING_STOP?.PERCENT || 3.0;
+  const percentTrailingStop = highestPrice * (1 - (trailingStopPercent / 100));
+
+  // 4. Use the maximum of the two stops if configured, otherwise use ATR-based
+  let trailingStopPrice;
+  if (SELL_CRITERIA.TRAILING_STOP?.USE_MAX_STOP) {
+    trailingStopPrice = Math.max(atrTrailingStop, percentTrailingStop);
+    // Log which stop is being used
+    if (atrTrailingStop > percentTrailingStop) {
+      console.log(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+    } else {
+      console.log(`Using percentage-based trailing stop: ${percentTrailingStop.toFixed(8)} (${trailingStopPercent}% below highest price)`);
+    }
+  } else {
+    trailingStopPrice = atrTrailingStop;
+    console.log(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+  }
 
   // Initialize tiered profit taking if not already set
   if (!position.tiers) {
@@ -289,9 +329,18 @@ function meetsSellCriteria(position, currentData) {
   }
 
   if (currentPrice < trailingStopPrice && highestPrice > entryPrice) {
+    // Calculate how much the price dropped from the highest point
+    const dropPercent = ((highestPrice - currentPrice) / highestPrice) * 100;
+
+    // Determine which type of trailing stop was triggered
+    let stopType = "ATR-based";
+    if (SELL_CRITERIA.TRAILING_STOP?.USE_MAX_STOP && percentTrailingStop > atrTrailingStop) {
+      stopType = "percentage-based";
+    }
+
     return {
       sell: true,
-      reason: 'Trailing stop triggered',
+      reason: `Trailing stop triggered (${stopType}, ${dropPercent.toFixed(2)}% drop from high of $${highestPrice.toFixed(8)})`,
       sellPercentage: 100 // Sell all
     };
   }
@@ -1009,11 +1058,50 @@ async function monitorPositions(jupiterService, dexService) {
       const currentPrice = currentData.priceUsd;
       const entryPrice = position.entryPrice;
       const profitPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
+
+      // Calculate trailing stop levels for logging
+      const { SELL_CRITERIA } = BOT_CONFIG;
+      const indicators = currentData.indicators.hour || {};
+
+      // Get ATR multiplier based on profit level
+      let atrMultiplier = SELL_CRITERIA.TRAILING_STOP?.ATR_MULTIPLIER || 2.5;
+      if (SELL_CRITERIA.TRAILING_STOP?.DYNAMIC_ATR_MULTIPLIERS) {
+        const sortedMultipliers = [...SELL_CRITERIA.TRAILING_STOP.DYNAMIC_ATR_MULTIPLIERS]
+          .sort((a, b) => b.PROFIT_PERCENT - a.PROFIT_PERCENT);
+
+        for (const level of sortedMultipliers) {
+          if (profitPercent >= level.PROFIT_PERCENT) {
+            atrMultiplier = level.MULTIPLIER;
+            break;
+          }
+        }
+      }
+
+      // Calculate both types of stops
+      const atrTrailingStop = position.highestPrice - (atrMultiplier * (indicators.atr || 0));
+      const trailingStopPercent = SELL_CRITERIA.TRAILING_STOP?.PERCENT || 3.0;
+      const percentTrailingStop = position.highestPrice * (1 - (trailingStopPercent / 100));
+
+      // Determine which stop is active
+      let activeStop = atrTrailingStop;
+      let stopType = "ATR-based";
+      if (SELL_CRITERIA.TRAILING_STOP?.USE_MAX_STOP) {
+        if (percentTrailingStop > atrTrailingStop) {
+          activeStop = percentTrailingStop;
+          stopType = "percentage-based";
+        }
+      }
+
+      // Calculate distance to stop
+      const distanceToStop = ((currentPrice - activeStop) / currentPrice) * 100;
+
       console.log(`Position ${position.symbol}: Current price $${currentPrice.toFixed(8)}, ` +
                   `P/L: ${profitPercent.toFixed(2)}%, ` +
                   `Highest: $${position.highestPrice.toFixed(8)}, ` +
                   `RSI: ${currentData.indicators.hour?.rsi?.toFixed(2) || 'N/A'}, ` +
                   `Holder change: ${currentData.holderChange24h?.toFixed(2) || 'N/A'}%`);
+
+      console.log(`Trailing stop: $${activeStop.toFixed(8)} (${stopType}, ${distanceToStop.toFixed(2)}% away)`);
 
       // Check sell criteria with updated indicators and holder data
       const sellDecision = meetsSellCriteria(updatedPosition, currentData);

@@ -119,6 +119,22 @@ const SELL_CRITERIA = {
     ]
   },
 
+  // Enhanced trailing stop settings
+  TRAILING_STOP: {
+    // ATR-based trailing stop
+    ATR_MULTIPLIER: 2.5, // Default ATR multiplier
+    // Dynamic ATR multipliers based on profit levels
+    DYNAMIC_ATR_MULTIPLIERS: [
+      { PROFIT_PERCENT: 50, MULTIPLIER: 1.5 }, // Tighter stop for large profits
+      { PROFIT_PERCENT: 20, MULTIPLIER: 2.0 }, // Medium stop for medium profits
+      { PROFIT_PERCENT: 0, MULTIPLIER: 2.5 }   // Wider stop for smaller profits
+    ],
+    // Percentage-based trailing stop
+    PERCENT: 3.0, // Default trailing stop percentage (3%)
+    // Whether to use the maximum of ATR and percentage stops
+    USE_MAX_STOP: true
+  },
+
   STOP_LOSS: -7, // -7%
   MAX_RSI: 80,
   MIN_HOLDER_CHANGE_24H: -5 // Sell if holder decrease > 5%
