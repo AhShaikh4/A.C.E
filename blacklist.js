@@ -92,13 +92,13 @@ async function addToBlacklist(tokenAddress, symbol = 'Unknown') {
 async function removeFromBlacklist(tokenAddress) {
   const initialLength = blacklistedTokens.length;
   blacklistedTokens = blacklistedTokens.filter(addr => addr !== tokenAddress);
-  
+
   if (blacklistedTokens.length < initialLength) {
     await saveBlacklist();
     console.log(`Removed ${tokenAddress} from blacklist`);
     return true;
   }
-  
+
   console.log(`Token ${tokenAddress} was not in the blacklist`);
   return false;
 }
@@ -111,10 +111,19 @@ function getBlacklist() {
   return [...blacklistedTokens];
 }
 
+/**
+ * Get the size of the blacklist
+ * @returns {number} - The number of tokens in the blacklist
+ */
+function getBlacklistSize() {
+  return blacklistedTokens.length;
+}
+
 module.exports = {
   initializeBlacklist,
   isBlacklisted,
   addToBlacklist,
   removeFromBlacklist,
-  getBlacklist
+  getBlacklist,
+  getBlacklistSize
 };

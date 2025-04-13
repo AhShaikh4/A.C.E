@@ -34,14 +34,28 @@ async function initialize() {
     logger.updateSpinner('Connecting to Solana mainnet-beta...');
     const connection = initializeConnection();
     logger.succeedSpinner('✓ Successfully connected to Solana mainnet-beta');
+    logger.logUser('Successfully connected to Solana mainnet-beta network');
 
     logger.startSpinner('Initializing wallet...');
     const wallet = initializeWallet();
     logger.succeedSpinner('Wallet initialized successfully');
+    logger.logUser('Wallet initialized successfully');
 
     logger.startSpinner('Checking wallet balance...');
     const walletInfo = await checkWalletBalance(wallet);
     logger.succeedSpinner(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
+    logger.logUser(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
+
+    // Log wallet status to user.log
+    if (walletInfo.hasMinimumBalance) {
+      if (walletInfo.balance >= BOT_CONFIG.BUY_AMOUNT_SOL) {
+        logger.logUser(`Wallet has sufficient balance for trading (${walletInfo.balance} SOL)`);
+      } else {
+        logger.logUser(`Wallet has insufficient balance for trading (${walletInfo.balance} SOL). Minimum required: ${BOT_CONFIG.BUY_AMOUNT_SOL} SOL`);
+      }
+    } else {
+      logger.logUser(`Wallet has insufficient balance for any operations (${walletInfo.balance} SOL). Minimum required: ${BOT_CONFIG.MINIMUM_SOL_BALANCE} SOL`);
+    }
 
     // Get buy amount from config
     const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
@@ -187,6 +201,7 @@ async function runCycle(services) {
     }
 
     logger.info(`Analysis Cycle Completed in ${duration}ms`);
+    logger.logUser(`Analysis completed in ${duration}ms. Found ${analyzedTokens.length} tokens${analyzedTokens.length > 0 ? ', top: ' + analyzedTokens.slice(0, 3).map(t => t.symbol).join(', ') : ''}`);
     return analyzedTokens;
   } catch (error) {
     logger.error(`Cycle Error: ${error.message}`, error);

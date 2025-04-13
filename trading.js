@@ -1168,6 +1168,10 @@ async function monitorPositions(jupiterService, dexService) {
       if (sellDecision.sell) {
         console.log(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
 
+        // Log to user.log
+        const logger = require('./logger');
+        logger.logUser(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
+
         // Get the sell percentage (default to 100% if not specified)
         const sellPercentage = sellDecision.sellPercentage || 100;
 
@@ -1190,11 +1194,14 @@ async function monitorPositions(jupiterService, dexService) {
             // Remove the position entirely
             positions.delete(tokenAddress);
             console.log(`Sold ${position.symbol} completely: ${sellDecision.reason}`);
+            logger.logUser(`Sold ${position.symbol} completely for ${sellPercentage}% of position: ${sellDecision.reason}`);
           } else {
             // For partial sells (tiered profit taking), update the position amount
             // The actual amount will be updated on the next monitoring cycle when we fetch the balance again
             console.log(`Partially sold ${position.symbol} (${sellPercentage}%): ${sellDecision.reason}`);
             console.log(`Position will be updated on next monitoring cycle`);
+            logger.logUser(`Partially sold ${position.symbol} (${sellPercentage}% of position): ${sellDecision.reason}`);
+            logger.logUser(`Position will be updated on next monitoring cycle`);
           }
         }
       }
@@ -1247,9 +1254,14 @@ async function processTokens(finalTokens, jupiterService) {
 
         console.log(`Bought ${token.symbol} at $${token.priceUsd}`);
 
+        // Log to user.log
+        const logger = require('./logger');
+        logger.logUser(`Bought ${token.symbol} at $${token.priceUsd} for ${BOT_CONFIG.BUY_AMOUNT_SOL} SOL, received ${position.amount} tokens`);
+
         // Exit since we now have a position (only allowing one at a time)
         if (positions.size >= MAX_POSITIONS) {
           console.log(`Position acquired. Only one position allowed at a time.`);
+          logger.logUser(`Position acquired. Only one position allowed at a time.`);
           break;
         }
       }
