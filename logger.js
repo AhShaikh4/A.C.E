@@ -217,11 +217,27 @@ function logAnalyzed(data) {
 function logTrade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
 
+  // Calculate PNL in USD if we have the necessary data
+  let pnlUsd = 'N/A';
+  if (action === 'SELL' && profitLoss !== undefined) {
+    // Calculate the entry value (what we paid)
+    const entryValue = amount * (price / (1 + profitLoss / 100));
+
+    // Calculate the exit value (what we received)
+    const exitValue = amount * price;
+
+    // Calculate the PNL in USD
+    const pnlUsdValue = exitValue - entryValue;
+
+    // Format with + sign for positive values and 2 decimal places
+    pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+  }
+
   // Format the trade data
   const logEntry = `[${getESTTimestamp()}] ${action.toUpperCase()} ${symbol}\n` +
                   `  Price: $${price}\n` +
                   `  Amount: ${amount}\n` +
-                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
+                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})\n` +
                   `  Reason: ${reason || 'N/A'}\n` +
                   `  Transaction: ${txSignature || 'N/A'}\n\n`;
 
@@ -234,19 +250,33 @@ function logTrade(tradeDetails) {
  * @param {Object} walletData - Wallet performance data
  */
 function logWallet(walletData) {
-  const { balance, positions, totalPnl, timestamp } = walletData;
+  const { balance, positions, totalPnl, totalPnlUsd, timestamp } = walletData;
 
   // Format the wallet data
   const positionsStr = positions.length > 0
-    ? positions.map(p =>
-      `  ${p.symbol}: ${p.amount} tokens at $${p.entryPrice}, ` +
-      `Current: $${p.currentPrice}, PnL: ${p.profitLoss > 0 ? '+' : ''}${p.profitLoss.toFixed(2)}%`
-    ).join('\n')
+    ? positions.map(p => {
+      // Calculate USD PNL if available
+      let pnlUsd = 'N/A';
+      if (p.profitLoss !== undefined && p.amount && p.currentPrice) {
+        const entryValue = p.amount * p.entryPrice;
+        const currentValue = p.amount * p.currentPrice;
+        const pnlUsdValue = currentValue - entryValue;
+        pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+      }
+
+      return `  ${p.symbol}: ${p.amount} tokens at $${p.entryPrice}, ` +
+        `Current: $${p.currentPrice}, PnL: ${p.profitLoss > 0 ? '+' : ''}${p.profitLoss.toFixed(2)}% (${pnlUsd})`;
+    }).join('\n')
     : '  No open positions';
+
+  // Format USD PNL if available
+  const formattedUsdPnl = totalPnlUsd !== undefined && totalPnlUsd !== null
+    ? ` (${totalPnlUsd > 0 ? '+' : '-'}$${Math.abs(totalPnlUsd).toFixed(2)})`
+    : '';
 
   const logEntry = `[${timestamp || getESTTimestamp()}] Wallet Status\n` +
                   `  Balance: ${balance !== null ? balance + ' SOL' : 'N/A'}\n` +
-                  `  Total PnL: ${totalPnl !== null ? (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2) + '%' : 'N/A'}\n` +
+                  `  Total PnL: ${totalPnl !== null ? (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2) + '%' : 'N/A'}${formattedUsdPnl}\n` +
                   `  Positions:\n${positionsStr}\n\n`;
 
   // Log to wallet.log file
@@ -487,6 +517,23 @@ function error(message, error) {
 function trade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
 
+  // Calculate PNL in USD if we have the necessary data
+  let pnlUsd = 'N/A';
+  let pnlUsdValue = 0;
+  if (action === 'SELL' && profitLoss !== undefined) {
+    // Calculate the entry value (what we paid)
+    const entryValue = amount * (price / (1 + profitLoss / 100));
+
+    // Calculate the exit value (what we received)
+    const exitValue = amount * price;
+
+    // Calculate the PNL in USD
+    pnlUsdValue = exitValue - entryValue;
+
+    // Format with + sign for positive values and 2 decimal places
+    pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+  }
+
   // Create a table for trade details
   const table = new Table({
     chars: {
@@ -505,6 +552,13 @@ function trade(tradeDetails) {
         : chalk.red(`${profitLoss.toFixed(2)}%`))
     : chalk.grey('N/A');
 
+  // Format USD profit/loss with color
+  const plUsdText = action === 'SELL' && profitLoss !== undefined
+    ? (pnlUsdValue > 0
+        ? chalk.green(pnlUsd)
+        : chalk.red(pnlUsd))
+    : chalk.grey('N/A');
+
   // Action color based on buy/sell
   const actionColor = action.toUpperCase() === 'BUY' ? chalk.green : chalk.red;
 
@@ -513,7 +567,8 @@ function trade(tradeDetails) {
     [{ content: actionColor(`${action.toUpperCase()} ${symbol}`), colSpan: 2, hAlign: 'center' }],
     ['Price', `$${price}`],
     ['Amount', amount],
-    ['Profit/Loss', plText],
+    ['Profit/Loss %', plText],
+    ['Profit/Loss $', plUsdText],
     ['Reason', reason || 'N/A'],
     ['Transaction', txSignature ? chalk.blue(txSignature) : chalk.grey('N/A')]
   );
@@ -526,7 +581,7 @@ function trade(tradeDetails) {
   logTrade(tradeDetails);
 
   // Also log to user.log for important trade info
-  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'}`);
+  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})`);
 
   // Log to wallet log if it's a completed trade with P/L
   if (profitLoss) {
@@ -534,6 +589,7 @@ function trade(tradeDetails) {
       balance: null, // Will be updated elsewhere
       positions: [],
       totalPnl: profitLoss,
+      totalPnlUsd: pnlUsdValue,
       timestamp: getESTTimestamp()
     });
   }

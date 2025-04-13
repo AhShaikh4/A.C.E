@@ -381,9 +381,26 @@ function meetsSellCriteria(position, currentData) {
 async function logTrade(tradeDetails) {
   // Get EST timestamp using the same function as in logger.js
   const timestamp = getESTTimestamp();
+
+  // Calculate PNL in USD if we have the necessary data
+  let pnlUsd = 'N/A';
+  if (tradeDetails.action === 'SELL' && tradeDetails.profitLoss !== undefined) {
+    // Calculate the entry value (what we paid)
+    const entryValue = tradeDetails.amount * (tradeDetails.price / (1 + tradeDetails.profitLoss / 100));
+
+    // Calculate the exit value (what we received)
+    const exitValue = tradeDetails.amount * tradeDetails.price;
+
+    // Calculate the PNL in USD
+    const pnlUsdValue = exitValue - entryValue;
+
+    // Format with + sign for positive values and 2 decimal places
+    pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+  }
+
   const logEntry = `[${timestamp}] ${tradeDetails.action} ${tradeDetails.symbol} | ${tradeDetails.reason || ''}\n` +
                   `  Price: ${tradeDetails.price} | Amount: ${tradeDetails.amount}\n` +
-                  `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
+                  `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})\n` +
                   `  Transaction: ${tradeDetails.txSignature || 'N/A'}\n\n`;
 
   try {
