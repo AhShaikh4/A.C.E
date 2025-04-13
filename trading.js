@@ -382,8 +382,10 @@ async function logTrade(tradeDetails) {
   // Get EST timestamp using the same function as in logger.js
   const timestamp = getESTTimestamp();
 
-  // Calculate PNL in USD if we have the necessary data
+  // Calculate PNL in USD and SOL if we have the necessary data
   let pnlUsd = 'N/A';
+  let pnlSol = 'N/A';
+
   if (tradeDetails.action === 'SELL' && tradeDetails.profitLoss !== undefined) {
     // Calculate the entry value (what we paid)
     const entryValue = tradeDetails.amount * (tradeDetails.price / (1 + tradeDetails.profitLoss / 100));
@@ -396,11 +398,19 @@ async function logTrade(tradeDetails) {
 
     // Format with + sign for positive values and 2 decimal places
     pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+
+    // Calculate SOL value based on current SOL price (approximately $150 per SOL)
+    // Note: In a production environment, you would fetch the actual SOL price
+    const solPrice = 150; // Approximate SOL price in USD
+    const pnlSolValue = pnlUsdValue / solPrice;
+
+    // Format SOL value with + sign for positive values and 6 decimal places (SOL has 9 decimals)
+    pnlSol = pnlSolValue > 0 ? `+${pnlSolValue.toFixed(6)} SOL` : `-${Math.abs(pnlSolValue).toFixed(6)} SOL`;
   }
 
   const logEntry = `[${timestamp}] ${tradeDetails.action} ${tradeDetails.symbol} | ${tradeDetails.reason || ''}\n` +
                   `  Price: ${tradeDetails.price} | Amount: ${tradeDetails.amount}\n` +
-                  `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})\n` +
+                  `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})\n` +
                   `  Transaction: ${tradeDetails.txSignature || 'N/A'}\n\n`;
 
   try {

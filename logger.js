@@ -217,8 +217,11 @@ function logAnalyzed(data) {
 function logTrade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
 
-  // Calculate PNL in USD if we have the necessary data
+  // Calculate PNL in USD and SOL if we have the necessary data
   let pnlUsd = 'N/A';
+  let pnlSol = 'N/A';
+  let pnlUsdValue = 0;
+
   if (action === 'SELL' && profitLoss !== undefined) {
     // Calculate the entry value (what we paid)
     const entryValue = amount * (price / (1 + profitLoss / 100));
@@ -227,22 +230,33 @@ function logTrade(tradeDetails) {
     const exitValue = amount * price;
 
     // Calculate the PNL in USD
-    const pnlUsdValue = exitValue - entryValue;
+    pnlUsdValue = exitValue - entryValue;
 
     // Format with + sign for positive values and 2 decimal places
     pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+
+    // Calculate SOL value based on current SOL price (approximately $150 per SOL)
+    // Note: In a production environment, you would fetch the actual SOL price
+    const solPrice = 150; // Approximate SOL price in USD
+    const pnlSolValue = pnlUsdValue / solPrice;
+
+    // Format SOL value with + sign for positive values and 6 decimal places (SOL has 9 decimals)
+    pnlSol = pnlSolValue > 0 ? `+${pnlSolValue.toFixed(6)} SOL` : `-${Math.abs(pnlSolValue).toFixed(6)} SOL`;
   }
 
   // Format the trade data
   const logEntry = `[${getESTTimestamp()}] ${action.toUpperCase()} ${symbol}\n` +
                   `  Price: $${price}\n` +
                   `  Amount: ${amount}\n` +
-                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})\n` +
+                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})\n` +
                   `  Reason: ${reason || 'N/A'}\n` +
                   `  Transaction: ${txSignature || 'N/A'}\n\n`;
 
   // Log to trades.log file
   fs.appendFileSync(path.join(logDir, 'trades.log'), logEntry);
+
+  // Return the calculated values for use in other functions
+  return { pnlUsdValue, pnlSol };
 }
 
 /**
@@ -250,22 +264,28 @@ function logTrade(tradeDetails) {
  * @param {Object} walletData - Wallet performance data
  */
 function logWallet(walletData) {
-  const { balance, positions, totalPnl, totalPnlUsd, timestamp } = walletData;
+  const { balance, positions, totalPnl, totalPnlUsd, totalPnlSol, timestamp } = walletData;
 
   // Format the wallet data
   const positionsStr = positions.length > 0
     ? positions.map(p => {
       // Calculate USD PNL if available
       let pnlUsd = 'N/A';
+      let pnlSol = 'N/A';
       if (p.profitLoss !== undefined && p.amount && p.currentPrice) {
         const entryValue = p.amount * p.entryPrice;
         const currentValue = p.amount * p.currentPrice;
         const pnlUsdValue = currentValue - entryValue;
         pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+
+        // Calculate SOL value based on current SOL price (approximately $150 per SOL)
+        const solPrice = 150; // Approximate SOL price in USD
+        const pnlSolValue = pnlUsdValue / solPrice;
+        pnlSol = pnlSolValue > 0 ? `+${pnlSolValue.toFixed(6)} SOL` : `-${Math.abs(pnlSolValue).toFixed(6)} SOL`;
       }
 
       return `  ${p.symbol}: ${p.amount} tokens at $${p.entryPrice}, ` +
-        `Current: $${p.currentPrice}, PnL: ${p.profitLoss > 0 ? '+' : ''}${p.profitLoss.toFixed(2)}% (${pnlUsd})`;
+        `Current: $${p.currentPrice}, PnL: ${p.profitLoss > 0 ? '+' : ''}${p.profitLoss.toFixed(2)}% (${pnlUsd}) (${pnlSol})`;
     }).join('\n')
     : '  No open positions';
 
@@ -274,9 +294,14 @@ function logWallet(walletData) {
     ? ` (${totalPnlUsd > 0 ? '+' : '-'}$${Math.abs(totalPnlUsd).toFixed(2)})`
     : '';
 
+  // Format SOL PNL if available
+  const formattedSolPnl = totalPnlSol !== undefined && totalPnlSol !== null
+    ? ` (${totalPnlSol > 0 ? '+' : '-'}${Math.abs(totalPnlSol).toFixed(6)} SOL)`
+    : '';
+
   const logEntry = `[${timestamp || getESTTimestamp()}] Wallet Status\n` +
                   `  Balance: ${balance !== null ? balance + ' SOL' : 'N/A'}\n` +
-                  `  Total PnL: ${totalPnl !== null ? (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2) + '%' : 'N/A'}${formattedUsdPnl}\n` +
+                  `  Total PnL: ${totalPnl !== null ? (totalPnl > 0 ? '+' : '') + totalPnl.toFixed(2) + '%' : 'N/A'}${formattedUsdPnl}${formattedSolPnl}\n` +
                   `  Positions:\n${positionsStr}\n\n`;
 
   // Log to wallet.log file
@@ -517,9 +542,12 @@ function error(message, error) {
 function trade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
 
-  // Calculate PNL in USD if we have the necessary data
+  // Calculate PNL in USD and SOL if we have the necessary data
   let pnlUsd = 'N/A';
+  let pnlSol = 'N/A';
   let pnlUsdValue = 0;
+  let pnlSolValue = 0;
+
   if (action === 'SELL' && profitLoss !== undefined) {
     // Calculate the entry value (what we paid)
     const entryValue = amount * (price / (1 + profitLoss / 100));
@@ -532,6 +560,14 @@ function trade(tradeDetails) {
 
     // Format with + sign for positive values and 2 decimal places
     pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
+
+    // Calculate SOL value based on current SOL price (approximately $150 per SOL)
+    // Note: In a production environment, you would fetch the actual SOL price
+    const solPrice = 150; // Approximate SOL price in USD
+    pnlSolValue = pnlUsdValue / solPrice;
+
+    // Format SOL value with + sign for positive values and 6 decimal places (SOL has 9 decimals)
+    pnlSol = pnlSolValue > 0 ? `+${pnlSolValue.toFixed(6)} SOL` : `-${Math.abs(pnlSolValue).toFixed(6)} SOL`;
   }
 
   // Create a table for trade details
@@ -559,6 +595,13 @@ function trade(tradeDetails) {
         : chalk.red(pnlUsd))
     : chalk.grey('N/A');
 
+  // Format SOL profit/loss with color
+  const plSolText = action === 'SELL' && profitLoss !== undefined
+    ? (pnlSolValue > 0
+        ? chalk.green(pnlSol)
+        : chalk.red(pnlSol))
+    : chalk.grey('N/A');
+
   // Action color based on buy/sell
   const actionColor = action.toUpperCase() === 'BUY' ? chalk.green : chalk.red;
 
@@ -569,6 +612,7 @@ function trade(tradeDetails) {
     ['Amount', amount],
     ['Profit/Loss %', plText],
     ['Profit/Loss $', plUsdText],
+    ['Profit/Loss SOL', plSolText],
     ['Reason', reason || 'N/A'],
     ['Transaction', txSignature ? chalk.blue(txSignature) : chalk.grey('N/A')]
   );
@@ -581,7 +625,7 @@ function trade(tradeDetails) {
   logTrade(tradeDetails);
 
   // Also log to user.log for important trade info
-  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd})`);
+  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})`);
 
   // Log to wallet log if it's a completed trade with P/L
   if (profitLoss) {
@@ -590,6 +634,7 @@ function trade(tradeDetails) {
       positions: [],
       totalPnl: profitLoss,
       totalPnlUsd: pnlUsdValue,
+      totalPnlSol: pnlSolValue,
       timestamp: getESTTimestamp()
     });
   }
