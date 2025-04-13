@@ -91,15 +91,35 @@
   - [x] Create position tracker
   - [x] Implement dynamic profit targets
   - [x] Add trailing stop-loss
+    - [x] Implement dynamic ATR multiplier based on profit level
+    - [x] Add percentage-based trailing stop as backup
+    - [x] Add comprehensive logging of stop levels
+  - [x] Implement tiered profit taking
+    - [x] Add configurable profit tiers (15%, 40%, 100%)
+    - [x] Add configurable position percentages per tier (30%, 30%, 40%)
   - [x] Add ROI calculation
+    - [x] Add percentage-based profit/loss tracking
+    - [x] Add USD value profit/loss tracking
+    - [x] Add SOL value profit/loss tracking
   - [x] Implement risk management
   - [ ] Add portfolio rebalancing
   - [ ] Create alert system
 - [x] Add Trade Logging
   - [x] Design logging schema
   - [x] Add trade execution logging
+    - [x] Log trades with EST timezone timestamps
+    - [x] Log detailed buy information (SOL spent, tokens received)
+    - [x] Log detailed sell information (tokens sold, profit/loss)
   - [x] Add performance metrics
+    - [x] Track profit/loss in percentage
+    - [x] Track profit/loss in USD value
+    - [x] Track profit/loss in SOL value
   - [x] Implement error tracking
+  - [x] Enhance user.log with comprehensive information
+    - [x] Log wallet connection and balance details
+    - [x] Log token filtration process at each step
+    - [x] Log buy/sell operations with detailed information
+    - [x] Log analysis results and top tokens
   - [ ] Add historical analysis tools
   - [ ] Create reporting system
 
@@ -109,7 +129,7 @@
   - [x] Add volume analysis
   - [x] Add trend analysis
   - [x] Add new listing detection
-  - [ ] Implement token blacklist
+  - [x] Implement token blacklist
   - [x] Add holder analysis from Moralis
   - [x] Implement sniper detection
 
