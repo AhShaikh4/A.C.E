@@ -123,8 +123,22 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 
 - ✅ **Tiered Profit Taking**
   - Configurable profit tiers (15%, 40%, 100%)
+    - Sells portions of position at different profit levels
+    - Secures profits earlier while maintaining upside potential
+    - Reduces risk as position becomes profitable
   - Configurable position percentages per tier (30%, 30%, 40%)
+    - Customizable allocation for each profit tier
+    - Balanced approach between securing profits and maximizing gains
+    - Final portion uses main profit target or trailing stop
   - Partial sell execution with position tracking
+    - Calculates token amount to sell based on percentage
+    - Keeps tracking partially sold positions for future tiers
+    - Prevents duplicate sells by marking tiers as executed
+  - Benefits:
+    - Improved risk management by securing profits at multiple levels
+    - Psychological advantage reducing early/late exit temptation
+    - Optimized returns balancing security and potential gains
+    - Reduced impact of volatility after securing partial profits
 
 #### Optimized Token Filtering
 
@@ -233,7 +247,17 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ DCA (Dollar Cost Averaging) orders
 - ✅ Tiered profit taking orders
   - ✅ Configurable profit tiers (15%, 40%, 100%)
+    - Sells portions of position at different profit levels
+    - Secures profits earlier while maintaining upside potential
+    - Reduces risk as position becomes profitable
   - ✅ Configurable position percentages per tier (30%, 30%, 40%)
+    - Customizable allocation for each profit tier
+    - Balanced approach between securing profits and maximizing gains
+    - Final portion uses main profit target or trailing stop
+  - ✅ Sophisticated position management
+    - Tracks partially sold positions for future profit tiers
+    - Prevents duplicate sells with tier execution tracking
+    - Handles position updates after partial sells
 
 ---
 
