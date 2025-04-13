@@ -104,9 +104,22 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 
 - ✅ **Enhanced Trailing Stop**
   - Dynamic ATR multiplier based on profit level
+    - Adjusts trailing stop distance based on current profit level
+    - Tighter stops at higher profit levels (e.g., 1.5x ATR at 50% profit)
+    - Medium stops at medium profit levels (e.g., 2.0x ATR at 20% profit)
+    - Wider stops at lower profit levels (e.g., 2.5x ATR at 0% profit)
   - Percentage-based trailing stop as backup
+    - Simple percentage-based trailing stop (default 3%)
+    - Option to use maximum of ATR and percentage stops
+    - Provides safety net when ATR value is unusually low
   - Configurable parameters in config.js
+    - Customizable ATR multipliers for different profit levels
+    - Adjustable percentage for percentage-based stops
+    - Toggle for using maximum of both stop types
   - Comprehensive logging of stop levels
+    - Shows which stop type is active (ATR-based or percentage-based)
+    - Displays distance to stop as percentage
+    - Detailed trigger information for post-trade analysis
 
 - ✅ **Tiered Profit Taking**
   - Configurable profit tiers (15%, 40%, 100%)
@@ -205,8 +218,18 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Recurring orders
 - ✅ Stop orders
   - ✅ Enhanced trailing stop with dynamic ATR multiplier
+    - Adjusts trailing stop distance based on current profit level
+    - Tighter stops at higher profit levels (e.g., 1.5x ATR at 50% profit)
+    - Medium stops at medium profit levels (e.g., 2.0x ATR at 20% profit)
+    - Wider stops at lower profit levels (e.g., 2.5x ATR at 0% profit)
   - ✅ Percentage-based trailing stop as backup
+    - Simple percentage-based trailing stop (default 3%)
+    - Option to use maximum of ATR and percentage stops
+    - Provides safety net when ATR value is unusually low
   - ✅ Configurable parameters in config.js
+    - Customizable ATR multipliers for different profit levels
+    - Adjustable percentage for percentage-based stops
+    - Toggle for using maximum of both stop types
 - ✅ DCA (Dollar Cost Averaging) orders
 - ✅ Tiered profit taking orders
   - ✅ Configurable profit tiers (15%, 40%, 100%)
@@ -233,9 +256,22 @@ A sophisticated trading bot designed for automated analysis and trading of Solan
 - ✅ Network error handling
 - ✅ Enhanced risk management
   - ✅ Dynamic trailing stop based on profit level
+    - Adaptive risk management that adjusts based on profit level
+    - Becomes more conservative as profits grow
+    - Dual protection using both ATR and percentage-based stops
   - ✅ Tiered profit taking to secure gains
+    - Locks in profits at predetermined levels
+    - Reduces risk while maintaining upside potential
+    - Configurable tiers and percentages
   - ✅ Comprehensive profit/loss tracking in multiple units (%, USD, SOL)
+    - Clear visibility into performance metrics
+    - Multiple measurement units for complete perspective
+    - Real-time P&L updates during position monitoring
   - ✅ Detailed logging for post-trade analysis
+    - Captures exact reason for trade exits
+    - Logs which stop type was triggered
+    - Records distance from highest price
+    - Enables continuous strategy improvement
 
 ---
 
