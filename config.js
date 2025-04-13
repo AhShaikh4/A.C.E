@@ -107,15 +107,15 @@ const BUY_CRITERIA = {
 // Sell criteria
 const SELL_CRITERIA = {
   // Traditional single profit target (used as final tier)
-  PROFIT_TARGET: 15, // 15%
+  PROFIT_TARGET: 100, // 100%
 
   // Tiered profit taking
   TIERED_PROFIT_TAKING: {
     ENABLED: true,
     TIERS: [
-      { PERCENT: 5, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 5%
-      { PERCENT: 10, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 10%
-      // Final 40% uses the PROFIT_TARGET (15%) or trailing stop
+      { PERCENT: 15, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 15%
+      { PERCENT: 40, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 40%
+      // Final 40% uses the PROFIT_TARGET (100%) or trailing stop
     ]
   },
 

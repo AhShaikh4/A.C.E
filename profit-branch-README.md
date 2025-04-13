@@ -20,9 +20,9 @@ The tiered profit taking strategy is configured in the `SELL_CRITERIA` object:
 TIERED_PROFIT_TAKING: {
   ENABLED: true,
   TIERS: [
-    { PERCENT: 5, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 5%
-    { PERCENT: 10, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 10%
-    // Final 40% uses the PROFIT_TARGET (15%) or trailing stop
+    { PERCENT: 15, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 15%
+    { PERCENT: 40, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 40%
+    // Final 40% uses the PROFIT_TARGET (100%) or trailing stop
   ]
 }
 ```
@@ -64,7 +64,7 @@ The position monitoring logic has been updated to:
 3. The position remains tracked, and the tier is marked as executed to prevent duplicate sells.
 4. If the price continues to rise and reaches the next tier, another portion is sold.
 5. The final portion is sold when either:
-   - The main profit target is reached (default: 15%)
+   - The main profit target is reached (100%)
    - A trailing stop is triggered
    - Any other exit condition occurs (RSI overbought, etc.)
 
