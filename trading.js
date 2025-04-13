@@ -263,14 +263,16 @@ function meetsSellCriteria(position, currentData) {
   if (SELL_CRITERIA.TRAILING_STOP?.USE_MAX_STOP) {
     trailingStopPrice = Math.max(atrTrailingStop, percentTrailingStop);
     // Log which stop is being used
+    const timestamp = getESTTimestamp();
     if (atrTrailingStop > percentTrailingStop) {
-      console.log(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+      console.log(`[${timestamp}] Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
     } else {
-      console.log(`Using percentage-based trailing stop: ${percentTrailingStop.toFixed(8)} (${trailingStopPercent}% below highest price)`);
+      console.log(`[${timestamp}] Using percentage-based trailing stop: ${percentTrailingStop.toFixed(8)} (${trailingStopPercent}% below highest price)`);
     }
   } else {
     trailingStopPrice = atrTrailingStop;
-    console.log(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+    const timestamp = getESTTimestamp();
+    console.log(`[${timestamp}] Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
   }
 
   // Initialize tiered profit taking if not already set
@@ -377,7 +379,8 @@ function meetsSellCriteria(position, currentData) {
  * @param {Object} tradeDetails - Details of the trade
  */
 async function logTrade(tradeDetails) {
-  const timestamp = new Date().toISOString();
+  // Get EST timestamp using the same function as in logger.js
+  const timestamp = getESTTimestamp();
   const logEntry = `[${timestamp}] ${tradeDetails.action} ${tradeDetails.symbol} | ${tradeDetails.reason || ''}\n` +
                   `  Price: ${tradeDetails.price} | Amount: ${tradeDetails.amount}\n` +
                   `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'}\n` +
@@ -389,6 +392,35 @@ async function logTrade(tradeDetails) {
   } catch (error) {
     console.error(`Failed to log trade: ${error.message}`);
   }
+}
+
+/**
+ * Get current timestamp in EST timezone
+ * @returns {string} - Formatted timestamp in EST
+ */
+function getESTTimestamp() {
+  const date = new Date();
+
+  // Format options for EST timezone
+  const options = {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  };
+
+  // Format the date in EST
+  const estTime = date.toLocaleString('en-US', options);
+
+  // Convert to ISO-like format: YYYY-MM-DD HH:MM:SS EST
+  const [datePart, timePart] = estTime.split(', ');
+  const [month, day, year] = datePart.split('/');
+
+  return `${year}-${month}-${day} ${timePart} EST`;
 }
 
 /**
@@ -1101,7 +1133,8 @@ async function monitorPositions(jupiterService, dexService) {
                   `RSI: ${currentData.indicators.hour?.rsi?.toFixed(2) || 'N/A'}, ` +
                   `Holder change: ${currentData.holderChange24h?.toFixed(2) || 'N/A'}%`);
 
-      console.log(`Trailing stop: $${activeStop.toFixed(8)} (${stopType}, ${distanceToStop.toFixed(2)}% away)`);
+      const timestamp = getESTTimestamp();
+      console.log(`[${timestamp}] Trailing stop: $${activeStop.toFixed(8)} (${stopType}, ${distanceToStop.toFixed(2)}% away)`);
 
       // Check sell criteria with updated indicators and holder data
       const sellDecision = meetsSellCriteria(updatedPosition, currentData);
