@@ -106,7 +106,19 @@ const BUY_CRITERIA = {
 
 // Sell criteria
 const SELL_CRITERIA = {
+  // Traditional single profit target (used as final tier)
   PROFIT_TARGET: 15, // 15%
+
+  // Tiered profit taking
+  TIERED_PROFIT_TAKING: {
+    ENABLED: true,
+    TIERS: [
+      { PERCENT: 5, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 5%
+      { PERCENT: 10, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 10%
+      // Final 40% uses the PROFIT_TARGET (15%) or trailing stop
+    ]
+  },
+
   STOP_LOSS: -7, // -7%
   MAX_RSI: 80,
   MIN_HOLDER_CHANGE_24H: -5 // Sell if holder decrease > 5%

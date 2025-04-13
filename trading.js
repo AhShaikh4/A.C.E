@@ -228,33 +228,96 @@ function meetsSellCriteria(position, currentData) {
   const indicators = currentData.indicators.hour || {};
   const currentPrice = currentData.priceUsd;
   const entryPrice = position.entryPrice;
-  const profitPercent = (currentPrice - entryPrice) / entryPrice;
+  const profitPercent = ((currentPrice - entryPrice) / entryPrice) * 100; // Convert to percentage
   const highestPrice = position.highestPrice;
   const trailingStopPrice = highestPrice - (2.5 * (indicators.atr || 0));
+  const { SELL_CRITERIA } = BOT_CONFIG;
 
-  // Check each sell condition
-  if (profitPercent >= 0.15) {
-    return { sell: true, reason: 'Profit target reached (15%)' };
+  // Initialize tiered profit taking if not already set
+  if (!position.tiers) {
+    position.tiers = [];
+    if (SELL_CRITERIA.TIERED_PROFIT_TAKING && SELL_CRITERIA.TIERED_PROFIT_TAKING.ENABLED) {
+      // Copy tiers from config to avoid modifying the original
+      position.tiers = SELL_CRITERIA.TIERED_PROFIT_TAKING.TIERS.map(tier => ({
+        percent: tier.PERCENT,
+        positionPercent: tier.POSITION_PERCENT,
+        executed: false
+      }));
+    }
   }
 
-  if (profitPercent <= -0.07) {
-    return { sell: true, reason: 'Stop loss triggered (-7%)' };
+  // Check for tiered profit taking
+  if (SELL_CRITERIA.TIERED_PROFIT_TAKING && SELL_CRITERIA.TIERED_PROFIT_TAKING.ENABLED) {
+    // Sort tiers by profit percent (highest first) to check higher tiers first
+    const sortedTiers = [...position.tiers].sort((a, b) => b.percent - a.percent);
+
+    for (const tier of sortedTiers) {
+      if (!tier.executed && profitPercent >= tier.percent) {
+        // Mark this tier as executed
+        tier.executed = true;
+
+        // Update the position's tiers
+        position.tiers = position.tiers.map(t =>
+          t.percent === tier.percent ? tier : t
+        );
+
+        return {
+          sell: true,
+          reason: `Tiered profit taking (${tier.percent}%)`,
+          tier: tier,
+          sellPercentage: tier.positionPercent
+        };
+      }
+    }
+  }
+
+  // Check traditional sell conditions
+  if (profitPercent >= SELL_CRITERIA.PROFIT_TARGET) {
+    return {
+      sell: true,
+      reason: `Profit target reached (${SELL_CRITERIA.PROFIT_TARGET}%)`,
+      sellPercentage: 100 // Sell all remaining
+    };
+  }
+
+  if (profitPercent <= SELL_CRITERIA.STOP_LOSS) {
+    return {
+      sell: true,
+      reason: `Stop loss triggered (${SELL_CRITERIA.STOP_LOSS}%)`,
+      sellPercentage: 100 // Sell all
+    };
   }
 
   if (currentPrice < trailingStopPrice && highestPrice > entryPrice) {
-    return { sell: true, reason: 'Trailing stop triggered' };
+    return {
+      sell: true,
+      reason: 'Trailing stop triggered',
+      sellPercentage: 100 // Sell all
+    };
   }
 
-  if (indicators.rsi > 80) {
-    return { sell: true, reason: 'RSI overbought (>80)' };
+  if (indicators.rsi > SELL_CRITERIA.MAX_RSI) {
+    return {
+      sell: true,
+      reason: `RSI overbought (>${SELL_CRITERIA.MAX_RSI})`,
+      sellPercentage: 100 // Sell all
+    };
   }
 
   if (currentPrice < indicators.bollinger?.middle) {
-    return { sell: true, reason: 'Price below Bollinger middle band' };
+    return {
+      sell: true,
+      reason: 'Price below Bollinger middle band',
+      sellPercentage: 100 // Sell all
+    };
   }
 
-  if (currentData.holderChange24h < -5) {
-    return { sell: true, reason: 'Significant holder decrease' };
+  if (currentData.holderChange24h < SELL_CRITERIA.MIN_HOLDER_CHANGE_24H) {
+    return {
+      sell: true,
+      reason: 'Significant holder decrease',
+      sellPercentage: 100 // Sell all
+    };
   }
 
   return { sell: false };
@@ -551,14 +614,16 @@ async function executeBuy(token, jupiterService, connection) {
  * @param {Object} currentData - Current token data
  * @param {JupiterService} jupiterService - Jupiter service instance
  * @param {string} reason - Reason for selling
+ * @param {number} sellPercentage - Percentage of position to sell (1-100)
  * @returns {Promise<boolean>} - Whether sell was successful
  */
-async function executeSell(position, currentData, jupiterService, reason) {
+async function executeSell(position, currentData, jupiterService, reason, sellPercentage = 100) {
   try {
     console.log(`Attempting to sell ${position.symbol} (${position.tokenAddress}): ${reason}`);
 
     // Get current token balance to ensure we're selling what we actually have
     let tokenAmount = null;
+    let fullTokenAmount = null;
 
     // Try to get the actual token balance directly from the wallet first (most reliable)
     try {
@@ -571,9 +636,13 @@ async function executeSell(position, currentData, jupiterService, reason) {
       if (tokenAccount.value.length > 0) {
         const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
         // Store both UI amount and decimals for conversion
-        tokenAmount = parseFloat(balance.uiAmount);
+        fullTokenAmount = parseFloat(balance.uiAmount);
         const tokenDecimals = balance.decimals;
-        console.log(`Direct wallet balance of ${position.symbol}: ${tokenAmount} (decimals: ${tokenDecimals})`);
+        console.log(`Direct wallet balance of ${position.symbol}: ${fullTokenAmount} (decimals: ${tokenDecimals})`);
+
+        // Calculate the amount to sell based on the sellPercentage
+        tokenAmount = fullTokenAmount * (sellPercentage / 100);
+        console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
 
         // Store token decimals in the position for later use
         position.tokenDecimals = tokenDecimals;
@@ -588,8 +657,11 @@ async function executeSell(position, currentData, jupiterService, reason) {
         const balances = await jupiterService.getBalances();
         const tokenBalance = balances.tokens.find(t => t.mint === position.tokenAddress);
         if (tokenBalance && tokenBalance.uiAmount > 0) {
-          tokenAmount = tokenBalance.uiAmount;
-          console.log(`Using Jupiter API balance: ${tokenAmount} ${position.symbol}`);
+          fullTokenAmount = tokenBalance.uiAmount;
+          // Calculate the amount to sell based on the sellPercentage
+          tokenAmount = fullTokenAmount * (sellPercentage / 100);
+          console.log(`Using Jupiter API balance: ${fullTokenAmount} ${position.symbol}`);
+          console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
         }
       } catch (jupiterError) {
         console.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
@@ -599,8 +671,11 @@ async function executeSell(position, currentData, jupiterService, reason) {
     // Last resort: use position amount (but with sanity check)
     if (tokenAmount === null) {
       if (position.amount > 0 && position.amount < 1000000000) {
-        tokenAmount = position.amount;
-        console.log(`Using position amount as last resort: ${tokenAmount} ${position.symbol}`);
+        fullTokenAmount = position.amount;
+        // Calculate the amount to sell based on the sellPercentage
+        tokenAmount = fullTokenAmount * (sellPercentage / 100);
+        console.log(`Using position amount as last resort: ${fullTokenAmount} ${position.symbol}`);
+        console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
       } else {
         throw new Error(`No valid token amount available for selling`);
       }
@@ -944,10 +1019,35 @@ async function monitorPositions(jupiterService, dexService) {
       const sellDecision = meetsSellCriteria(updatedPosition, currentData);
       if (sellDecision.sell) {
         console.log(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
-        const sellSuccess = await executeSell(updatedPosition, currentData, jupiterService, sellDecision.reason);
+
+        // Get the sell percentage (default to 100% if not specified)
+        const sellPercentage = sellDecision.sellPercentage || 100;
+
+        // Execute the sell with the specified percentage
+        const sellSuccess = await executeSell(
+          updatedPosition,
+          currentData,
+          jupiterService,
+          sellDecision.reason,
+          sellPercentage
+        );
+
         if (sellSuccess) {
-          positions.delete(tokenAddress);
-          console.log(`Sold ${position.symbol}: ${sellDecision.reason}`);
+          // If we're selling the entire position or this is a stop loss/emergency exit
+          if (sellPercentage >= 100 ||
+              sellDecision.reason.includes('Stop loss') ||
+              sellDecision.reason.includes('RSI overbought') ||
+              sellDecision.reason.includes('Bollinger') ||
+              sellDecision.reason.includes('holder decrease')) {
+            // Remove the position entirely
+            positions.delete(tokenAddress);
+            console.log(`Sold ${position.symbol} completely: ${sellDecision.reason}`);
+          } else {
+            // For partial sells (tiered profit taking), update the position amount
+            // The actual amount will be updated on the next monitoring cycle when we fetch the balance again
+            console.log(`Partially sold ${position.symbol} (${sellPercentage}%): ${sellDecision.reason}`);
+            console.log(`Position will be updated on next monitoring cycle`);
+          }
         }
       }
     } catch (error) {
