@@ -5,12 +5,12 @@ require('dotenv').config();
 // Bot operation settings
 const BOT_CONFIG = {
   // Analysis settings
-  ANALYSIS_INTERVAL_MINUTES: 3, // How often to run analysis (in minutes)
+  ANALYSIS_INTERVAL_MINUTES: 1, // How often to run analysis (in minutes)
 
   // Trading settings
   TRADING_ENABLED: true, // Master switch for trading
-  MAX_POSITIONS: 1, // Maximum number of concurrent positions
-  POSITION_CHECK_INTERVAL_SECONDS: 2, // How often to check positions (in seconds)
+  MAX_POSITIONS: 3, // Maximum number of concurrent positions
+  POSITION_CHECK_INTERVAL_SECONDS: 7, // How often to check positions (in seconds)
 
   // Token filtering settings
   MIN_LIQUIDITY_USD: 20000, // Minimum liquidity in USD
