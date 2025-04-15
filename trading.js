@@ -379,46 +379,15 @@ function meetsSellCriteria(position, currentData) {
  * @param {Object} tradeDetails - Details of the trade
  */
 async function logTrade(tradeDetails) {
-  // Get EST timestamp using the same function as in logger.js
-  const timestamp = getESTTimestamp();
+  // Import logger module
+  const logger = require('./logger');
 
-  // Calculate PNL in USD and SOL if we have the necessary data
-  let pnlUsd = 'N/A';
-  let pnlSol = 'N/A';
+  // Use the logger's trade function to log the trade
+  // This will log to the ./logs/trades.log file instead of the root directory
+  logger.trade(tradeDetails);
 
-  if (tradeDetails.action === 'SELL' && tradeDetails.profitLoss !== undefined) {
-    // Calculate the entry value (what we paid)
-    const entryValue = tradeDetails.amount * (tradeDetails.price / (1 + tradeDetails.profitLoss / 100));
-
-    // Calculate the exit value (what we received)
-    const exitValue = tradeDetails.amount * tradeDetails.price;
-
-    // Calculate the PNL in USD
-    const pnlUsdValue = exitValue - entryValue;
-
-    // Format with + sign for positive values and 2 decimal places
-    pnlUsd = pnlUsdValue > 0 ? `+$${pnlUsdValue.toFixed(2)}` : `-$${Math.abs(pnlUsdValue).toFixed(2)}`;
-
-    // Calculate SOL value based on current SOL price (approximately $150 per SOL)
-    // Note: In a production environment, you would fetch the actual SOL price
-    const solPrice = 150; // Approximate SOL price in USD
-    const pnlSolValue = pnlUsdValue / solPrice;
-
-    // Format SOL value with + sign for positive values and 6 decimal places (SOL has 9 decimals)
-    pnlSol = pnlSolValue > 0 ? `+${pnlSolValue.toFixed(6)} SOL` : `-${Math.abs(pnlSolValue).toFixed(6)} SOL`;
-  }
-
-  const logEntry = `[${timestamp}] ${tradeDetails.action} ${tradeDetails.symbol} | ${tradeDetails.reason || ''}\n` +
-                  `  Price: ${tradeDetails.price} | Amount: ${tradeDetails.amount}\n` +
-                  `  Profit/Loss: ${tradeDetails.profitLoss ? (tradeDetails.profitLoss > 0 ? '+' : '') + tradeDetails.profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})\n` +
-                  `  Transaction: ${tradeDetails.txSignature || 'N/A'}\n\n`;
-
-  try {
-    await fs.appendFile('trades.log', logEntry);
-    console.log(`Trade logged: ${tradeDetails.action} ${tradeDetails.symbol}`);
-  } catch (error) {
-    console.error(`Failed to log trade: ${error.message}`);
-  }
+  // Log a simple message to the console
+  console.log(`Trade logged: ${tradeDetails.action} ${tradeDetails.symbol}`);
 }
 
 /**
