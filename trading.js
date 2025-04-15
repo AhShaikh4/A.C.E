@@ -21,7 +21,7 @@ const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mi
 const BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Fixed buy amount in SOL
 const BUY_AMOUNT_LAMPORTS = BUY_AMOUNT_SOL * 1000000000; // Convert SOL to lamports
 const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS || 1; // Maximum number of concurrent positions
-const PRICE_CHECK_INTERVAL = 30000; // 30 seconds
+const PRICE_CHECK_INTERVAL = 7000; // 30 seconds
 const SLIPPAGE_BPS = BOT_CONFIG.SLIPPAGE_BPS || 500; // Slippage tolerance
 // const MINIMUM_SOL_RESERVE = 0.001; // Minimum SOL to keep in wallet for transaction fees (not used)
 
@@ -797,6 +797,12 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
     // Ensure the amount is a valid number
     if (isNaN(tokenAmount) || tokenAmount <= 0) {
+      // IMPROVEMENT #2: If there are no tokens to sell, remove the position from tracking
+      if (fullTokenAmount <= 0) {
+        console.log(`No tokens to sell for ${position.symbol}, removing from tracking`);
+        positions.delete(position.tokenAddress);
+        return true; // Consider the sell "successful" if there are no tokens to sell
+      }
       throw new Error(`Invalid token amount: ${tokenAmount}`);
     }
 
@@ -903,6 +909,12 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         txSignature,
         reason
       });
+
+      // IMPROVEMENT #1: Explicitly remove position after successful sell
+      if (sellPercentage >= 100) {
+        console.log(`Sell transaction successful, removing ${position.symbol} from position tracking`);
+        positions.delete(position.tokenAddress);
+      }
     } catch (swapError) {
       // Try with a smaller amount if the full amount fails
       if (tokenAmount > 1) {
@@ -960,6 +972,12 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
             txSignature: retryTxSignature,
             reason: reason + ' (reduced amount)'
           });
+
+          // IMPROVEMENT #1: Explicitly remove position after successful retry sell
+          if (sellPercentage >= 100) {
+            console.log(`Retry sell transaction successful, removing ${position.symbol} from position tracking`);
+            positions.delete(position.tokenAddress);
+          }
         } catch (retryError) {
           throw new Error(`Failed to sell with reduced amount: ${retryError.message}. Original error: ${swapError.message}`);
         }
