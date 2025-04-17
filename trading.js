@@ -1141,6 +1141,24 @@ async function monitorPositions(jupiterService, dexService) {
       // Calculate distance to stop
       const distanceToStop = ((currentPrice - activeStop) / currentPrice) * 100;
 
+      // Add trailing stop info to position for logging
+      position.currentPrice = currentPrice;
+      position.profitLoss = profitPercent;
+      position.rsi = currentData.indicators.hour?.rsi;
+      position.holderChange = currentData.holderChange24h;
+      position.trailingStop = {
+        price: activeStop,
+        type: stopType,
+        distance: distanceToStop
+      };
+
+      // Import logger module
+      const logger = require('./logger');
+
+      // Log to monitor.log file only
+      logger.monitor(position);
+
+      // Log minimal info to console
       console.log(`Position ${position.symbol}: Current price $${currentPrice.toFixed(8)}, ` +
                   `P/L: ${profitPercent.toFixed(2)}%, ` +
                   `Highest: $${position.highestPrice.toFixed(8)}, ` +
@@ -1178,6 +1196,9 @@ async function monitorPositions(jupiterService, dexService) {
               sellDecision.reason.includes('RSI overbought') ||
               sellDecision.reason.includes('Bollinger') ||
               sellDecision.reason.includes('holder decrease')) {
+            // Log to monitor.log before removing the position
+            logger.monitor(position, 'SELL', sellDecision.reason);
+
             // Remove the position entirely
             positions.delete(tokenAddress);
             console.log(`Sold ${position.symbol} completely: ${sellDecision.reason}`);
@@ -1185,6 +1206,8 @@ async function monitorPositions(jupiterService, dexService) {
           } else {
             // For partial sells (tiered profit taking), update the position amount
             // The actual amount will be updated on the next monitoring cycle when we fetch the balance again
+            logger.monitor(position, 'PARTIAL_SELL', `${sellDecision.reason} (${sellPercentage}%)`);
+
             console.log(`Partially sold ${position.symbol} (${sellPercentage}%): ${sellDecision.reason}`);
             console.log(`Position will be updated on next monitoring cycle`);
             logger.logUser(`Partially sold ${position.symbol} (${sellPercentage}% of position): ${sellDecision.reason}`);
@@ -1381,11 +1404,20 @@ function hasOpenPositions() {
   return positions.size > 0;
 }
 
+/**
+ * Get the count of open positions
+ * @returns {number} - Number of open positions
+ */
+function getOpenPositionsCount() {
+  return positions.size;
+}
+
 module.exports = {
   executeTradingStrategy,
   stopTrading,
   getCurrentPositions,
   hasOpenPositions,
+  getOpenPositionsCount,
   // Export these for testing/simulation
   meetsBuyCriteria,
   meetsSellCriteria

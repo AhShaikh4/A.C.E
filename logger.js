@@ -118,6 +118,12 @@ const logger = winston.createLogger({
       filename: path.join(logDir, 'wallet.log'),
       maxsize: 20971520,
       maxFiles: 10
+    }),
+    // Monitor log - Position monitoring logs
+    new winston.transports.File({
+      filename: path.join(logDir, 'monitor.log'),
+      maxsize: 20971520,
+      maxFiles: 10
     })
   ]
 });
@@ -135,7 +141,8 @@ function clearLogFiles() {
       'detailed.log',
       'user.log',
       'trades.log',
-      'wallet.log'
+      'wallet.log',
+      'monitor.log'
     ];
 
     // Delete each log file
@@ -306,6 +313,52 @@ function logWallet(walletData) {
 
   // Log to wallet.log file
   fs.appendFileSync(path.join(logDir, 'wallet.log'), logEntry);
+}
+
+/**
+ * Log position monitoring data to the monitor log file
+ * @param {Object} monitorData - Position monitoring data
+ */
+function logMonitor(monitorData) {
+  const { position, action, reason, timestamp } = monitorData;
+
+  if (!position) {
+    return;
+  }
+
+  // Format the position data
+  let logEntry = `[${timestamp || getESTTimestamp()}] Monitoring ${position.symbol}\n`;
+
+  // Add position details
+  logEntry += `  Current price: $${position.currentPrice}\n`;
+  logEntry += `  Entry price: $${position.entryPrice}\n`;
+  logEntry += `  P/L: ${position.profitLoss > 0 ? '+' : ''}${position.profitLoss.toFixed(2)}%\n`;
+
+  // Add technical indicators if available
+  if (position.rsi !== undefined) {
+    logEntry += `  RSI: ${position.rsi.toFixed(2)}\n`;
+  }
+
+  if (position.holderChange !== undefined) {
+    logEntry += `  Holder change: ${position.holderChange > 0 ? '+' : ''}${position.holderChange.toFixed(2)}%\n`;
+  }
+
+  // Add trailing stop information if available
+  if (position.trailingStop) {
+    logEntry += `  Trailing stop: $${position.trailingStop.price} (${position.trailingStop.type}, ` +
+      `${position.trailingStop.distance > 0 ? '+' : ''}${position.trailingStop.distance.toFixed(2)}% away)\n`;
+  }
+
+  // Add action if any
+  if (action) {
+    logEntry += `  Action: ${action.toUpperCase()}\n`;
+    logEntry += `  Reason: ${reason || 'N/A'}\n`;
+  }
+
+  logEntry += '\n';
+
+  // Log to monitor.log file
+  fs.appendFileSync(path.join(logDir, 'monitor.log'), logEntry);
 }
 
 /**
@@ -707,6 +760,22 @@ function system(message) {
   logUser(`SYSTEM: ${message}`);
 }
 
+/**
+ * Log position monitoring information
+ * @param {Object} position - Position data
+ * @param {string} [action] - Optional action taken
+ * @param {string} [reason] - Optional reason for action
+ */
+function monitor(position, action, reason) {
+  // Log to monitor.log file only, not to console
+  logMonitor({
+    position,
+    action,
+    reason,
+    timestamp: getESTTimestamp()
+  });
+}
+
 module.exports = {
   // Standard logging functions
   debug,
@@ -716,6 +785,7 @@ module.exports = {
   trade,
   analysis,
   system,
+  monitor,
 
   // Specialized logging functions
   logDetailed,
@@ -723,6 +793,7 @@ module.exports = {
   logAnalyzed,
   logTrade,
   logWallet,
+  logMonitor,
 
   // UI helpers
   startSpinner,

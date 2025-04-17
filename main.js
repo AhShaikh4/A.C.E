@@ -114,6 +114,38 @@ async function initialize() {
 }
 
 /**
+ * Monitor existing positions
+ * @param {Object} services - Initialized services and connections
+ * @returns {Object} - Result of monitoring
+ */
+async function monitorPositions(services) {
+  try {
+    // Get current positions
+    const openPositionsCount = trading.getOpenPositionsCount();
+
+    // If no positions, nothing to monitor
+    if (openPositionsCount === 0) {
+      return { success: true, positionsOpened: 0 };
+    }
+
+    logger.startSpinner(`Monitoring ${openPositionsCount} open positions...`);
+    const result = await trading.executeTradingStrategy([], services);
+
+    if (result.success) {
+      logger.succeedSpinner(`Position monitoring executed successfully.`);
+    } else {
+      logger.failSpinner(`Position monitoring failed: ${result.reason}`);
+      logger.warn(`Position monitoring failed: ${result.reason}`);
+    }
+
+    return result;
+  } catch (error) {
+    logger.error(`Position monitoring error: ${error.message}`, error);
+    return { success: false, reason: error.message };
+  }
+}
+
+/**
  * Run a single analysis and trading cycle
  * @param {Object} services - Initialized services and connections
  */
@@ -122,25 +154,34 @@ async function runCycle(services) {
     const startTime = Date.now();
     logger.info(`Starting Analysis Cycle`);
 
-    // Check if we already have open positions
-    const hasOpenPositions = trading.hasOpenPositions();
+    // Check if we have open positions and how many
+    const openPositionsCount = trading.getOpenPositionsCount();
+    const hasOpenPositions = openPositionsCount > 0;
+    const isAtMaxPositions = openPositionsCount >= BOT_CONFIG.MAX_POSITIONS;
 
-    // If we're in trading mode and have open positions, skip the full analysis
-    // and just monitor the existing positions
-    if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED && hasOpenPositions) {
-      logger.startSpinner('Monitoring open positions...');
-      const result = await trading.executeTradingStrategy([], services);
+    // First, always monitor existing positions if we have any
+    if (hasOpenPositions) {
+      const monitorResult = await monitorPositions(services);
 
-      if (result.success) {
-        logger.succeedSpinner(`Position monitoring executed successfully. Positions: ${result.positionsOpened}`);
-      } else {
-        logger.failSpinner(`Position monitoring failed: ${result.reason}`);
-        logger.warn(`Position monitoring failed: ${result.reason}`);
+      // If we're at max positions, we can stop here
+      if (isAtMaxPositions) {
+        const duration = Date.now() - startTime;
+        logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
+        return [];
       }
 
-      const duration = Date.now() - startTime;
-      logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
-      return [];
+      // Re-check position count after monitoring (in case positions were closed)
+      const updatedPositionCount = trading.getOpenPositionsCount();
+      if (updatedPositionCount >= BOT_CONFIG.MAX_POSITIONS) {
+        const duration = Date.now() - startTime;
+        logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
+        return [];
+      }
+
+      // If we still have room for more positions, log that we're looking for more
+      if (updatedPositionCount < BOT_CONFIG.MAX_POSITIONS) {
+        logger.info(`Currently have ${updatedPositionCount}/${BOT_CONFIG.MAX_POSITIONS} positions. Looking for more opportunities...`);
+      }
     }
 
     // Perform technical analysis to find trading opportunities
@@ -382,5 +423,6 @@ module.exports = {
   startBot,
   stopBot,
   runCycle,
+  monitorPositions,
   getBotStatus
 };

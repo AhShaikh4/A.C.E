@@ -22,7 +22,7 @@ const BOT_CONFIG = {
   BLACKLIST_FILE: './data/blacklist.json', // File to store blacklisted tokens
 
   // Trade execution settings
-  BUY_AMOUNT_SOL: 0.04, // Amount of SOL to use per trade
+  BUY_AMOUNT_SOL: 0.08, // Amount of SOL to use per trade
   SLIPPAGE_BPS: 500, // Slippage tolerance in basis points (5%)
 
   // Exit settings

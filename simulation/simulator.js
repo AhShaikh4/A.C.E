@@ -836,9 +836,17 @@ async function runSimulation() {
       console.log(`Current wallet: ${wallet.solBalance / 1e9} SOL, ${wallet.tokenBalances.size} tokens`);
       console.log(`Open positions: ${positions.size}`);
 
-      // Only fetch new tokens when there are no open positions
-      if (positions.size === 0) {
-        console.log('No open positions. Fetching new tokens...');
+      // Check if we have open positions and how many
+      const openPositionsCount = positions.size;
+      const isAtMaxPositions = openPositionsCount >= MAX_POSITIONS;
+
+      // Only fetch new tokens when we have fewer than the maximum allowed positions
+      if (!isAtMaxPositions) {
+        if (openPositionsCount === 0) {
+          console.log('No open positions. Fetching new tokens...');
+        } else {
+          console.log(`Currently have ${openPositionsCount}/${MAX_POSITIONS} positions. Looking for more opportunities...`);
+        }
 
         // Fetch real tokens with retry logic
         finalTokens = await fetchAndAnalyzeTokens(dexService);
@@ -848,7 +856,7 @@ async function runSimulation() {
         const tradingResult = await simulateTrading(finalTokens, dexService);
         console.log(`Trading simulation result: ${tradingResult.success ? 'Success' : 'Failed'}, Positions opened: ${tradingResult.positionsOpened || 0}`);
       } else {
-        console.log(`${positions.size} open positions. Continuing monitoring...`);
+        console.log(`${openPositionsCount} open positions (at maximum). Continuing monitoring...`);
         // Monitoring is handled by the monitoringInterval
       }
 
