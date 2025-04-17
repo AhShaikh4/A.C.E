@@ -3,6 +3,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { BOT_CONFIG } = require('./config');
+const logger = require('./logger');
 
 // In-memory cache of blacklisted tokens
 let blacklistedTokens = [];
@@ -22,19 +23,19 @@ async function initializeBlacklist() {
       const data = await fs.readFile(BOT_CONFIG.BLACKLIST_FILE, 'utf8');
       const blacklist = JSON.parse(data);
       blacklistedTokens = blacklist.blacklistedTokens || [];
-      console.log(`Loaded ${blacklistedTokens.length} tokens from blacklist`);
+      logger.info(`Loaded ${blacklistedTokens.length} tokens from blacklist`);
     } catch (error) {
       // If file doesn't exist or is invalid, create a new one
       if (error.code === 'ENOENT' || error instanceof SyntaxError) {
         blacklistedTokens = [];
         await saveBlacklist();
-        console.log('Created new blacklist file');
+        logger.info('Created new blacklist file');
       } else {
         throw error;
       }
     }
   } catch (error) {
-    console.error(`Error initializing blacklist: ${error.message}`);
+    logger.error(`Error initializing blacklist: ${error.message}`);
     // Fall back to empty blacklist
     blacklistedTokens = [];
   }
@@ -50,7 +51,7 @@ async function saveBlacklist() {
     };
     await fs.writeFile(BOT_CONFIG.BLACKLIST_FILE, JSON.stringify(blacklist, null, 2));
   } catch (error) {
-    console.error(`Error saving blacklist: ${error.message}`);
+    logger.error(`Error saving blacklist: ${error.message}`);
   }
 }
 
@@ -74,13 +75,13 @@ function isBlacklisted(tokenAddress) {
  */
 async function addToBlacklist(tokenAddress, symbol = 'Unknown') {
   if (blacklistedTokens.includes(tokenAddress)) {
-    console.log(`Token ${symbol} (${tokenAddress}) is already blacklisted`);
+    logger.info(`Token ${symbol} (${tokenAddress}) is already blacklisted`);
     return false;
   }
 
   blacklistedTokens.push(tokenAddress);
   await saveBlacklist();
-  console.log(`Added ${symbol} (${tokenAddress}) to blacklist`);
+  logger.info(`Added ${symbol} (${tokenAddress}) to blacklist`);
   return true;
 }
 
@@ -95,11 +96,11 @@ async function removeFromBlacklist(tokenAddress) {
 
   if (blacklistedTokens.length < initialLength) {
     await saveBlacklist();
-    console.log(`Removed ${tokenAddress} from blacklist`);
+    logger.info(`Removed ${tokenAddress} from blacklist`);
     return true;
   }
 
-  console.log(`Token ${tokenAddress} was not in the blacklist`);
+  logger.info(`Token ${tokenAddress} was not in the blacklist`);
   return false;
 }
 

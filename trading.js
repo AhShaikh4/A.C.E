@@ -16,6 +16,9 @@ const { isBlacklisted } = require('./blacklist');
 // Import config
 const { BOT_CONFIG } = require('./config');
 
+// Import logger
+const logger = require('./logger');
+
 // Constants
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
 const BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Fixed buy amount in SOL
@@ -45,17 +48,17 @@ function meetsBuyCriteria(token) {
   const { BUY_CRITERIA } = BOT_CONFIG;
 
   // Debug logging for individual criteria
-  console.log(`Evaluating buy criteria for ${token.symbol}:`);
-  console.log(`- Score: ${token.score} (needs > ${BUY_CRITERIA.MIN_SCORE}): ${token.score > BUY_CRITERIA.MIN_SCORE}`);
-  console.log(`- Price Change 5m: ${token.priceChange.m5}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_5M}): ${token.priceChange.m5 > BUY_CRITERIA.MIN_PRICE_CHANGE_5M}`);
-  console.log(`- Price Change 1h: ${token.priceChange.h1}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_1H}): ${token.priceChange.h1 > BUY_CRITERIA.MIN_PRICE_CHANGE_1H}`);
-  console.log(`- MACD: ${indicators.macd?.MACD}, Signal: ${indicators.macd?.signal}, Histogram: ${indicators.macd?.histogram}`);
-  console.log(`- MACD Bullish: ${indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0}`);
-  console.log(`- RSI: ${indicators.rsi} (needs < ${BUY_CRITERIA.MAX_RSI}): ${indicators.rsi < BUY_CRITERIA.MAX_RSI}`);
-  console.log(`- Price vs Bollinger Upper: ${token.priceUsd} vs ${indicators.bollinger?.upper}: ${token.priceUsd > indicators.bollinger?.upper}`);
-  console.log(`- Tenkan-sen vs Kijun-sen: ${indicators.ichimoku?.tenkanSen} vs ${indicators.ichimoku?.kijunSen}: ${indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen}`);
-  console.log(`- Buy/Sell Ratio 5m: ${token.txns?.m5?.buys}/${token.txns?.m5?.sells} = ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1)} (needs > ${BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}): ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}`);
-  console.log(`- Holder Change 24h: ${token.holderChange24h} (needs >= ${BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}): ${token.holderChange24h === undefined || token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}`);
+  logger.debug(`Evaluating buy criteria for ${token.symbol}:`);
+  logger.debug(`- Score: ${token.score} (needs > ${BUY_CRITERIA.MIN_SCORE}): ${token.score > BUY_CRITERIA.MIN_SCORE}`);
+  logger.debug(`- Price Change 5m: ${token.priceChange.m5}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_5M}): ${token.priceChange.m5 > BUY_CRITERIA.MIN_PRICE_CHANGE_5M}`);
+  logger.debug(`- Price Change 1h: ${token.priceChange.h1}% (needs > ${BUY_CRITERIA.MIN_PRICE_CHANGE_1H}): ${token.priceChange.h1 > BUY_CRITERIA.MIN_PRICE_CHANGE_1H}`);
+  logger.debug(`- MACD: ${indicators.macd?.MACD}, Signal: ${indicators.macd?.signal}, Histogram: ${indicators.macd?.histogram}`);
+  logger.debug(`- MACD Bullish: ${indicators.macd?.MACD > indicators.macd?.signal && indicators.macd?.histogram > 0}`);
+  logger.debug(`- RSI: ${indicators.rsi} (needs < ${BUY_CRITERIA.MAX_RSI}): ${indicators.rsi < BUY_CRITERIA.MAX_RSI}`);
+  logger.debug(`- Price vs Bollinger Upper: ${token.priceUsd} vs ${indicators.bollinger?.upper}: ${token.priceUsd > indicators.bollinger?.upper}`);
+  logger.debug(`- Tenkan-sen vs Kijun-sen: ${indicators.ichimoku?.tenkanSen} vs ${indicators.ichimoku?.kijunSen}: ${indicators.ichimoku?.tenkanSen > indicators.ichimoku?.kijunSen}`);
+  logger.debug(`- Buy/Sell Ratio 5m: ${token.txns?.m5?.buys}/${token.txns?.m5?.sells} = ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1)} (needs > ${BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}): ${token.txns?.m5?.buys / (token.txns?.m5?.sells || 1) > BUY_CRITERIA.MIN_BUY_SELL_RATIO_5M}`);
+  logger.debug(`- Holder Change 24h: ${token.holderChange24h} (needs >= ${BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}): ${token.holderChange24h === undefined || token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H}`);
 
   // If scoring is disabled, use traditional AND-based criteria
   if (!BUY_CRITERIA.SCORING_ENABLED) {
@@ -70,7 +73,7 @@ function meetsBuyCriteria(token) {
       (token.holderChange24h === undefined || token.holderChange24h >= BUY_CRITERIA.MIN_HOLDER_CHANGE_24H) // Positive holder growth or missing data
     );
 
-    console.log(`Buy criteria met (traditional): ${result}`);
+    logger.debug(`Buy criteria met (traditional): ${result}`);
     return result;
   }
 
@@ -203,18 +206,18 @@ function meetsBuyCriteria(token) {
   totalScore = Math.round(totalScore * 10) / 10;
 
   // Log detailed scoring breakdown
-  console.log('Scoring breakdown:');
-  console.log(`- Token Score: ${scoreDetails.tokenScore}/${weights.TOKEN_SCORE}`);
-  console.log(`- Price Momentum: ${scoreDetails.momentum}/${weights.PRICE_MOMENTUM}`);
-  console.log(`- MACD: ${scoreDetails.macd}/${weights.MACD}`);
-  console.log(`- RSI: ${scoreDetails.rsi}/${weights.RSI}`);
-  console.log(`- Price Breakout: ${scoreDetails.breakout}/${weights.PRICE_BREAKOUT}`);
-  console.log(`- Buy/Sell Ratio: ${scoreDetails.buySellRatio}/${weights.BUY_SELL_RATIO}`);
-  console.log(`- Holder Growth: ${scoreDetails.holderGrowth}/${weights.HOLDER_GROWTH}`);
-  console.log(`Total Score: ${totalScore}/100 (Threshold: ${BUY_CRITERIA.MIN_TOTAL_SCORE})`);
+  logger.debug('Scoring breakdown:');
+  logger.debug(`- Token Score: ${scoreDetails.tokenScore}/${weights.TOKEN_SCORE}`);
+  logger.debug(`- Price Momentum: ${scoreDetails.momentum}/${weights.PRICE_MOMENTUM}`);
+  logger.debug(`- MACD: ${scoreDetails.macd}/${weights.MACD}`);
+  logger.debug(`- RSI: ${scoreDetails.rsi}/${weights.RSI}`);
+  logger.debug(`- Price Breakout: ${scoreDetails.breakout}/${weights.PRICE_BREAKOUT}`);
+  logger.debug(`- Buy/Sell Ratio: ${scoreDetails.buySellRatio}/${weights.BUY_SELL_RATIO}`);
+  logger.debug(`- Holder Growth: ${scoreDetails.holderGrowth}/${weights.HOLDER_GROWTH}`);
+  logger.debug(`Total Score: ${totalScore}/100 (Threshold: ${BUY_CRITERIA.MIN_TOTAL_SCORE})`);
 
   const result = totalScore >= BUY_CRITERIA.MIN_TOTAL_SCORE;
-  console.log(`Buy criteria met (scoring): ${result}`);
+  logger.debug(`Buy criteria met (scoring): ${result}`);
   return result;
 }
 
@@ -263,16 +266,14 @@ function meetsSellCriteria(position, currentData) {
   if (SELL_CRITERIA.TRAILING_STOP?.USE_MAX_STOP) {
     trailingStopPrice = Math.max(atrTrailingStop, percentTrailingStop);
     // Log which stop is being used
-    const timestamp = getESTTimestamp();
     if (atrTrailingStop > percentTrailingStop) {
-      console.log(`[${timestamp}] Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+      logger.debug(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
     } else {
-      console.log(`[${timestamp}] Using percentage-based trailing stop: ${percentTrailingStop.toFixed(8)} (${trailingStopPercent}% below highest price)`);
+      logger.debug(`Using percentage-based trailing stop: ${percentTrailingStop.toFixed(8)} (${trailingStopPercent}% below highest price)`);
     }
   } else {
     trailingStopPrice = atrTrailingStop;
-    const timestamp = getESTTimestamp();
-    console.log(`[${timestamp}] Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
+    logger.debug(`Using ATR-based trailing stop: ${atrTrailingStop.toFixed(8)} (ATR multiplier: ${atrMultiplier})`);
   }
 
   // Initialize tiered profit taking if not already set
@@ -379,45 +380,15 @@ function meetsSellCriteria(position, currentData) {
  * @param {Object} tradeDetails - Details of the trade
  */
 async function logTrade(tradeDetails) {
-  // Import logger module
-  const logger = require('./logger');
-
   // Use the logger's trade function to log the trade
   // This will log to the ./logs/trades.log file instead of the root directory
   logger.trade(tradeDetails);
 
   // Log a simple message to the console
-  console.log(`Trade logged: ${tradeDetails.action} ${tradeDetails.symbol}`);
+  logger.info(`Trade logged: ${tradeDetails.action} ${tradeDetails.symbol}`);
 }
 
-/**
- * Get current timestamp in EST timezone
- * @returns {string} - Formatted timestamp in EST
- */
-function getESTTimestamp() {
-  const date = new Date();
-
-  // Format options for EST timezone
-  const options = {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  };
-
-  // Format the date in EST
-  const estTime = date.toLocaleString('en-US', options);
-
-  // Convert to ISO-like format: YYYY-MM-DD HH:MM:SS EST
-  const [datePart, timePart] = estTime.split(', ');
-  const [month, day, year] = datePart.split('/');
-
-  return `${year}-${month}-${day} ${timePart} EST`;
-}
+// Use the getESTTimestamp function from logger.js instead of duplicating it here
 
 /**
  * Execute a buy order
@@ -428,11 +399,11 @@ function getESTTimestamp() {
  */
 async function executeBuy(token, jupiterService, connection) {
   try {
-    console.log(`Attempting to buy ${token.symbol} (${token.tokenAddress})`);
+    logger.info(`Attempting to buy ${token.symbol} (${token.tokenAddress})`);
 
     // Double-check if token is blacklisted (safety measure)
     if (isBlacklisted(token.tokenAddress)) {
-      console.log(`Aborting purchase of blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      logger.warn(`Aborting purchase of blacklisted token: ${token.symbol} (${token.tokenAddress})`);
       return null;
     }
 
@@ -449,13 +420,13 @@ async function executeBuy(token, jupiterService, connection) {
       if (tokenAccount.value.length > 0) {
         const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
         preSwapBalance = parseFloat(balance.uiAmount);
-        console.log(`Pre-swap direct wallet balance of ${token.symbol}: ${preSwapBalance}`);
+        logger.debug(`Pre-swap direct wallet balance of ${token.symbol}: ${preSwapBalance}`);
       } else {
-        console.log(`No token account found for ${token.symbol}, assuming zero balance`);
+        logger.debug(`No token account found for ${token.symbol}, assuming zero balance`);
         preSwapBalance = 0;
       }
     } catch (walletError) {
-      console.warn(`Failed to get direct wallet balance: ${walletError.message}`);
+      logger.warn(`Failed to get direct wallet balance: ${walletError.message}`);
 
       // Fallback to Jupiter API
       try {
@@ -463,13 +434,13 @@ async function executeBuy(token, jupiterService, connection) {
         if (balances && balances.tokens && Array.isArray(balances.tokens)) {
           const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
           preSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
-          console.log(`Pre-swap Jupiter API balance of ${token.symbol}: ${preSwapBalance}`);
+          logger.debug(`Pre-swap Jupiter API balance of ${token.symbol}: ${preSwapBalance}`);
         } else {
-          console.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
+          logger.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
           preSwapBalance = 0;
         }
       } catch (jupiterError) {
-        console.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
+        logger.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
         preSwapBalance = 0;
       }
     }
@@ -513,7 +484,7 @@ async function executeBuy(token, jupiterService, connection) {
     */
 
     // Using fixed buy amount as requested
-    console.log(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
+    logger.info(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
 
     // Execute swap from SOL to token with higher priority fee and longer timeout
     let txSignature;
@@ -531,7 +502,7 @@ async function executeBuy(token, jupiterService, connection) {
           timeout: 120000 // Increase timeout to 2 minutes
         }
       );
-      console.log(`Transaction confirmed: ${txSignature}`);
+      logger.info(`Transaction confirmed: ${txSignature}`);
     } catch (error) {
       // Check if this is a timeout error but the transaction might have gone through
       if (error.message && error.message.includes('was not confirmed') && error.message.includes('signature')) {
@@ -540,7 +511,7 @@ async function executeBuy(token, jupiterService, connection) {
         if (signatureMatch && signatureMatch[1]) {
           txSignature = signatureMatch[1];
           transactionTimedOut = true;
-          console.log(`Transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
+          logger.warn(`Transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
 
           // Wait a bit longer for the transaction to potentially confirm
           await new Promise(resolve => setTimeout(resolve, 10000));
@@ -551,13 +522,13 @@ async function executeBuy(token, jupiterService, connection) {
             const status = await connection.getSignatureStatus(txSignature, { searchTransactionHistory: true });
 
             if (status && status.value && status.value.confirmationStatus === 'confirmed') {
-              console.log(`Transaction ${txSignature} was confirmed after timeout!`);
+              logger.info(`Transaction ${txSignature} was confirmed after timeout!`);
               // Continue with the process as if the transaction succeeded
             } else if (status && status.value && status.value.confirmationStatus === 'finalized') {
-              console.log(`Transaction ${txSignature} was finalized after timeout!`);
+              logger.info(`Transaction ${txSignature} was finalized after timeout!`);
               // Continue with the process as if the transaction succeeded
             } else {
-              console.log(`Transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
+              logger.warn(`Transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
               if (!status || !status.value) {
                 throw new Error(`Transaction not found after timeout`);
               } else {
@@ -565,7 +536,7 @@ async function executeBuy(token, jupiterService, connection) {
               }
             }
           } catch (statusError) {
-            console.error(`Failed to check transaction status: ${statusError.message}`);
+            logger.error(`Failed to check transaction status: ${statusError.message}`);
             throw new Error(`Transaction timed out and status check failed: ${statusError.message}`);
           }
         } else {
@@ -579,7 +550,7 @@ async function executeBuy(token, jupiterService, connection) {
     // Wait a moment for the transaction to be confirmed and balances to update
     // Wait longer if the transaction timed out but was confirmed later
     const waitTime = transactionTimedOut ? 15000 : 10000;
-    console.log(`Waiting ${waitTime/1000} seconds for balances to update...`);
+    logger.debug(`Waiting ${waitTime/1000} seconds for balances to update...`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // Get actual token amount from updated balance
@@ -590,12 +561,12 @@ async function executeBuy(token, jupiterService, connection) {
       const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
       const postSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
       actualAmount = postSwapBalance - preSwapBalance;
-      console.log(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
-      console.log(`Calculated amount received: ${actualAmount}`);
+      logger.debug(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
+      logger.debug(`Calculated amount received: ${actualAmount}`);
 
       // If Jupiter API gives suspicious results, try direct wallet balance check
       if (actualAmount <= 0 || actualAmount > 1000000000) {
-        console.warn(`Suspicious amount received (${actualAmount}), checking direct wallet balance`);
+        logger.warn(`Suspicious amount received (${actualAmount}), checking direct wallet balance`);
 
         // Get token balance directly from the wallet
         const tokenAccount = await connection.getParsedTokenAccountsByOwner(
@@ -607,7 +578,7 @@ async function executeBuy(token, jupiterService, connection) {
           const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
           const directBalance = parseFloat(balance.uiAmount);
           const tokenDecimals = balance.decimals;
-          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance} (decimals: ${tokenDecimals})`);
+          logger.debug(`Direct wallet balance of ${token.symbol}: ${directBalance} (decimals: ${tokenDecimals})`);
 
           // Use direct balance as the actual amount
           actualAmount = directBalance;
@@ -615,13 +586,13 @@ async function executeBuy(token, jupiterService, connection) {
           // Store token decimals for later use
           token.tokenDecimals = tokenDecimals;
         } else {
-          console.warn(`No token account found for ${token.symbol}, falling back to estimate`);
+          logger.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
           actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       }
     } catch (error) {
-      console.warn(`Failed to get post-swap balance: ${error.message}`);
+      logger.warn(`Failed to get post-swap balance: ${error.message}`);
 
       try {
         // Try direct wallet balance check as fallback
@@ -633,14 +604,14 @@ async function executeBuy(token, jupiterService, connection) {
         if (tokenAccount.value.length > 0) {
           const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
           const directBalance = parseFloat(balance.uiAmount);
-          console.log(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
+          logger.debug(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
           actualAmount = directBalance;
         } else {
           // Last resort fallback
           actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       } catch (secondError) {
-        console.warn(`Failed to get direct wallet balance: ${secondError.message}`);
+        logger.warn(`Failed to get direct wallet balance: ${secondError.message}`);
         // Last resort fallback
         actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
       }
@@ -648,12 +619,12 @@ async function executeBuy(token, jupiterService, connection) {
 
     // Sanity check on the amount
     if (actualAmount > 1000000000) {
-      console.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
+      logger.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
       // Cap to a reasonable value based on the transaction amount
       actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
     }
 
-    console.log(`Final amount used for position: ${actualAmount}`);
+    logger.debug(`Final amount used for position: ${actualAmount}`);
 
     // Create position object
     const position = {
@@ -680,7 +651,7 @@ async function executeBuy(token, jupiterService, connection) {
 
     return position;
   } catch (error) {
-    console.error(`Buy execution failed for ${token.symbol}: ${error.message}`);
+    logger.error(`Buy execution failed for ${token.symbol}: ${error.message}`);
     return null;
   }
 }
@@ -696,7 +667,7 @@ async function executeBuy(token, jupiterService, connection) {
  */
 async function executeSell(position, currentData, jupiterService, reason, sellPercentage = 100) {
   try {
-    console.log(`Attempting to sell ${position.symbol} (${position.tokenAddress}): ${reason}`);
+    logger.info(`Attempting to sell ${position.symbol} (${position.tokenAddress}): ${reason}`);
 
     // Get current token balance to ensure we're selling what we actually have
     let tokenAmount = null;
@@ -715,17 +686,17 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         // Store both UI amount and decimals for conversion
         fullTokenAmount = parseFloat(balance.uiAmount);
         const tokenDecimals = balance.decimals;
-        console.log(`Direct wallet balance of ${position.symbol}: ${fullTokenAmount} (decimals: ${tokenDecimals})`);
+        logger.debug(`Direct wallet balance of ${position.symbol}: ${fullTokenAmount} (decimals: ${tokenDecimals})`);
 
         // Calculate the amount to sell based on the sellPercentage
         tokenAmount = fullTokenAmount * (sellPercentage / 100);
-        console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
+        logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
 
         // Store token decimals in the position for later use
         position.tokenDecimals = tokenDecimals;
       }
     } catch (walletError) {
-      console.warn(`Failed to get direct wallet balance: ${walletError.message}`);
+      logger.warn(`Failed to get direct wallet balance: ${walletError.message}`);
     }
 
     // If direct wallet check failed, try Jupiter API
@@ -737,11 +708,11 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
           fullTokenAmount = tokenBalance.uiAmount;
           // Calculate the amount to sell based on the sellPercentage
           tokenAmount = fullTokenAmount * (sellPercentage / 100);
-          console.log(`Using Jupiter API balance: ${fullTokenAmount} ${position.symbol}`);
-          console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
+          logger.debug(`Using Jupiter API balance: ${fullTokenAmount} ${position.symbol}`);
+          logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
         }
       } catch (jupiterError) {
-        console.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
+        logger.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
       }
     }
 
@@ -751,8 +722,8 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         fullTokenAmount = position.amount;
         // Calculate the amount to sell based on the sellPercentage
         tokenAmount = fullTokenAmount * (sellPercentage / 100);
-        console.log(`Using position amount as last resort: ${fullTokenAmount} ${position.symbol}`);
-        console.log(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
+        logger.debug(`Using position amount as last resort: ${fullTokenAmount} ${position.symbol}`);
+        logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
       } else {
         throw new Error(`No valid token amount available for selling`);
       }
@@ -760,7 +731,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
     // Sanity check - cap extremely large amounts
     if (tokenAmount > 1000000000) {
-      console.warn(`Token amount suspiciously large (${tokenAmount}), capping to 1,000,000`);
+      logger.warn(`Token amount suspiciously large (${tokenAmount}), capping to 1,000,000`);
       tokenAmount = 1000000; // Cap to a reasonable value
     }
 
@@ -768,7 +739,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
     if (isNaN(tokenAmount) || tokenAmount <= 0) {
       // IMPROVEMENT #2: If there are no tokens to sell, remove the position from tracking
       if (fullTokenAmount <= 0) {
-        console.log(`No tokens to sell for ${position.symbol}, removing from tracking`);
+        logger.info(`No tokens to sell for ${position.symbol}, removing from tracking`);
         positions.delete(position.tokenAddress);
         return true; // Consider the sell "successful" if there are no tokens to sell
       }
@@ -780,7 +751,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
     const tokenDecimals = position.tokenDecimals || 9; // Default to 9 decimals if not available
     const rawTokenAmount = Math.floor(tokenAmount * Math.pow(10, tokenDecimals));
 
-    console.log(`Executing swap: ${tokenAmount} ${position.symbol} (${rawTokenAmount} raw units) to SOL with ${SLIPPAGE_BPS/100}% slippage`);
+    logger.info(`Executing swap: ${tokenAmount} ${position.symbol} (${rawTokenAmount} raw units) to SOL with ${SLIPPAGE_BPS/100}% slippage`);
 
     try {
       // Get quote first to validate the swap using raw amount
@@ -791,7 +762,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         { slippageBps: SLIPPAGE_BPS }
       );
 
-      console.log(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
+      logger.debug(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
 
       // Check if the quote is valid
       if (!quote || !quote.outAmount) {
@@ -800,7 +771,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
       // If the amount is very small, log a warning
       if (tokenAmount < 10) {
-        console.log(`Small token amount detected (${tokenAmount}), using higher slippage to ensure transaction success`);
+        logger.warn(`Small token amount detected (${tokenAmount}), using higher slippage to ensure transaction success`);
       }
 
       // Execute the swap with higher priority fee for sell transactions
@@ -810,7 +781,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
       try {
         // Use much higher slippage for sell transactions to ensure they go through
         const sellSlippage = 2000; // 20% slippage for sells
-        console.log(`Using ${sellSlippage/100}% slippage for sell transaction`);
+        logger.debug(`Using ${sellSlippage/100}% slippage for sell transaction`);
 
         txSignature = await jupiterService.executeSwap(
           position.tokenAddress,
@@ -825,7 +796,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
           }
         );
 
-        console.log(`Sell transaction confirmed: ${txSignature}`);
+        logger.info(`Sell transaction confirmed: ${txSignature}`);
       } catch (error) {
         // Check if this is a timeout error but the transaction might have gone through
         if (error.message && error.message.includes('was not confirmed') && error.message.includes('signature')) {
@@ -834,7 +805,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
           if (signatureMatch && signatureMatch[1]) {
             txSignature = signatureMatch[1];
             transactionTimedOut = true;
-            console.log(`Sell transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
+            logger.warn(`Sell transaction timed out but may have succeeded. Checking status for: ${txSignature}`);
 
             // Wait a bit longer for the transaction to potentially confirm
             await new Promise(resolve => setTimeout(resolve, 10000));
@@ -845,14 +816,14 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
               const status = await connection.getSignatureStatus(txSignature, { searchTransactionHistory: true });
 
               if (status && status.value && (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized')) {
-                console.log(`Sell transaction ${txSignature} was confirmed after timeout!`);
+                logger.info(`Sell transaction ${txSignature} was confirmed after timeout!`);
                 // Continue with the process as if the transaction succeeded
               } else {
-                console.log(`Sell transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
+                logger.warn(`Sell transaction ${txSignature} status after timeout: ${JSON.stringify(status)}`);
                 throw new Error(`Sell transaction not confirmed after timeout`);
               }
             } catch (statusError) {
-              console.error(`Failed to check sell transaction status: ${statusError.message}`);
+              logger.error(`Failed to check sell transaction status: ${statusError.message}`);
               throw error; // Re-throw the original error
             }
           } else {
@@ -865,7 +836,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
       // Wait a moment for the transaction to be confirmed and balances to update
       const waitTime = transactionTimedOut ? 15000 : 10000;
-      console.log(`Waiting ${waitTime/1000} seconds for balances to update...`);
+      logger.debug(`Waiting ${waitTime/1000} seconds for balances to update...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
 
       // Log the trade with transaction signature
@@ -881,7 +852,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
       // IMPROVEMENT #1: Explicitly remove position after successful sell
       if (sellPercentage >= 100) {
-        console.log(`Sell transaction successful, removing ${position.symbol} from position tracking`);
+        logger.info(`Sell transaction successful, removing ${position.symbol} from position tracking`);
         positions.delete(position.tokenAddress);
       }
     } catch (swapError) {
@@ -891,17 +862,17 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         const reducedUIAmount = tokenAmount * 0.95;
         // Convert to raw amount
         const reducedRawAmount = Math.floor(reducedUIAmount * Math.pow(10, tokenDecimals));
-        console.log(`First attempt failed, trying with reduced amount: ${reducedUIAmount} ${position.symbol} (${reducedRawAmount} raw units)`);
+        logger.warn(`First attempt failed, trying with reduced amount: ${reducedUIAmount} ${position.symbol} (${reducedRawAmount} raw units)`);
 
         try {
           // Try with even higher slippage for retry
           const retrySlippage = 3000; // 30% slippage for desperate retry
-          console.log(`Retry attempt with ${retrySlippage/100}% slippage and further reduced amount`);
+          logger.warn(`Retry attempt with ${retrySlippage/100}% slippage and further reduced amount`);
 
           // Further reduce amount to 80% of already reduced amount
           const finalUIAmount = reducedUIAmount * 0.8;
           const finalRawAmount = Math.floor(finalUIAmount * Math.pow(10, tokenDecimals));
-          console.log(`Final retry amount: ${finalUIAmount} ${position.symbol} (${finalRawAmount} raw units)`);
+          logger.debug(`Final retry amount: ${finalUIAmount} ${position.symbol} (${finalRawAmount} raw units)`);
 
           // Get quote with much higher slippage using raw amount
           const retryQuote = await jupiterService.getSwapQuote(
@@ -915,7 +886,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
             throw new Error(`Invalid quote received for retry: ${JSON.stringify(retryQuote)}`);
           }
 
-          console.log(`Retry quote received: ${retryQuote.outAmount} lamports (≈${retryQuote.outAmount/1e9} SOL)`);
+          logger.debug(`Retry quote received: ${retryQuote.outAmount} lamports (≈${retryQuote.outAmount/1e9} SOL)`);
 
           const retryTxSignature = await jupiterService.executeSwap(
             position.tokenAddress,
@@ -929,7 +900,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
             }
           );
 
-          console.log(`Sell transaction with reduced amount confirmed: ${retryTxSignature}`);
+          logger.info(`Sell transaction with reduced amount confirmed: ${retryTxSignature}`);
 
           // Log the trade with transaction signature using the final amount that was actually sold
           await logTrade({
@@ -944,7 +915,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
 
           // IMPROVEMENT #1: Explicitly remove position after successful retry sell
           if (sellPercentage >= 100) {
-            console.log(`Retry sell transaction successful, removing ${position.symbol} from position tracking`);
+            logger.info(`Retry sell transaction successful, removing ${position.symbol} from position tracking`);
             positions.delete(position.tokenAddress);
           }
         } catch (retryError) {
@@ -958,7 +929,7 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
     // Success! Return true
     return true;
   } catch (error) {
-    console.error(`Sell execution failed for ${position.symbol}: ${error.message}`);
+    logger.error(`Sell execution failed for ${position.symbol}: ${error.message}`);
     return false;
   }
 }
@@ -989,7 +960,7 @@ function updatePosition(position, currentData) {
  */
 async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService) {
   try {
-    console.log(`Fetching current data for ${symbol} (${tokenAddress})...`);
+    logger.debug(`Fetching current data for ${symbol} (${tokenAddress})...`);
 
     // Get pair data from DexScreener for current price and transaction data
     const pairData = await dexService.getPairData('solana', poolAddress);
@@ -1005,7 +976,7 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
     // Use cached data if available and not expired
     if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL) {
       ohlcvData = cachedData.data;
-      console.log(`Using cached OHLCV data for ${symbol} (${ohlcvData.length} candles)`);
+      logger.debug(`Using cached OHLCV data for ${symbol} (${ohlcvData.length} candles)`);
     } else {
       // Fetch fresh OHLCV data
       ohlcvData = await fetchOHLCV('solana', poolAddress, symbol, 'hour', 1);
@@ -1016,7 +987,7 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
         timestamp: Date.now()
       });
 
-      console.log(`Fetched fresh OHLCV data for ${symbol} (${ohlcvData.length} candles)`);
+      logger.debug(`Fetched fresh OHLCV data for ${symbol} (${ohlcvData.length} candles)`);
     }
 
     // Calculate fresh indicators using the OHLCV data
@@ -1025,9 +996,9 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
       // Use the last 20 candles (or all available if less) for indicator calculation
       const recentOhlcv = ohlcvData.slice(-20);
       indicators = calculateIndicators(recentOhlcv);
-      console.log(`Recalculated indicators for ${symbol}`);
+      logger.debug(`Recalculated indicators for ${symbol}`);
     } else {
-      console.warn(`Insufficient OHLCV data for ${symbol}, using fallback indicators`);
+      logger.warn(`Insufficient OHLCV data for ${symbol}, using fallback indicators`);
     }
 
     // Fetch fresh holder data
@@ -1037,9 +1008,9 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
     let historicalHolders;
     try {
       historicalHolders = await getTokenHoldersHistorical(tokenAddress, fromDate, toDate);
-      console.log(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
+      logger.debug(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
     } catch (error) {
-      console.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
+      logger.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
       historicalHolders = { result: [] };
     }
 
@@ -1049,7 +1020,7 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
           historicalHolders.result[0].totalHolders) / (historicalHolders.result[0].totalHolders || 1) * 100) || 0
       : 0;
 
-    console.log(`Current holder change for ${symbol}: ${holderChange24h.toFixed(2)}%`);
+    logger.debug(`Current holder change for ${symbol}: ${holderChange24h.toFixed(2)}%`);
 
     // Combine all data
     return {
@@ -1059,7 +1030,7 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
       holderChange24h
     };
   } catch (error) {
-    console.error(`Failed to get current data for ${tokenAddress}: ${error.message}`);
+    logger.error(`Failed to get current data for ${tokenAddress}: ${error.message}`);
     return null;
   }
 }
@@ -1071,11 +1042,11 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
  * @param {Connection} connection - Solana connection
  */
 async function monitorPositions(jupiterService, dexService) {
-  console.log(`Monitoring ${positions.size} open positions...`);
+  logger.debug(`Monitoring ${positions.size} open positions...`);
 
   // If no positions, clear the interval
   if (positions.size === 0 && monitoringInterval) {
-    console.log('No positions to monitor. Stopping monitoring interval.');
+    logger.info('No positions to monitor. Stopping monitoring interval.');
     clearInterval(monitoringInterval);
     monitoringInterval = null;
     return;
@@ -1092,7 +1063,7 @@ async function monitorPositions(jupiterService, dexService) {
       );
 
       if (!currentData) {
-        console.warn(`Failed to get current data for ${position.symbol}, skipping this check`);
+        logger.warn(`Failed to get current data for ${position.symbol}, skipping this check`);
         continue;
       }
 
@@ -1152,29 +1123,24 @@ async function monitorPositions(jupiterService, dexService) {
         distance: distanceToStop
       };
 
-      // Import logger module
-      const logger = require('./logger');
-
       // Log to monitor.log file only
       logger.monitor(position);
 
       // Log minimal info to console
-      console.log(`Position ${position.symbol}: Current price $${currentPrice.toFixed(8)}, ` +
+      logger.info(`Position ${position.symbol}: Current price $${currentPrice.toFixed(8)}, ` +
                   `P/L: ${profitPercent.toFixed(2)}%, ` +
                   `Highest: $${position.highestPrice.toFixed(8)}, ` +
                   `RSI: ${currentData.indicators.hour?.rsi?.toFixed(2) || 'N/A'}, ` +
                   `Holder change: ${currentData.holderChange24h?.toFixed(2) || 'N/A'}%`);
 
-      const timestamp = getESTTimestamp();
-      console.log(`[${timestamp}] Trailing stop: $${activeStop.toFixed(8)} (${stopType}, ${distanceToStop.toFixed(2)}% away)`);
+      logger.debug(`Trailing stop: $${activeStop.toFixed(8)} (${stopType}, ${distanceToStop.toFixed(2)}% away)`);
 
       // Check sell criteria with updated indicators and holder data
       const sellDecision = meetsSellCriteria(updatedPosition, currentData);
       if (sellDecision.sell) {
-        console.log(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
+        logger.info(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
 
         // Log to user.log
-        const logger = require('./logger');
         logger.logUser(`Sell criteria met for ${position.symbol}: ${sellDecision.reason}`);
 
         // Get the sell percentage (default to 100% if not specified)
@@ -1201,22 +1167,22 @@ async function monitorPositions(jupiterService, dexService) {
 
             // Remove the position entirely
             positions.delete(tokenAddress);
-            console.log(`Sold ${position.symbol} completely: ${sellDecision.reason}`);
+            logger.info(`Sold ${position.symbol} completely: ${sellDecision.reason}`);
             logger.logUser(`Sold ${position.symbol} completely for ${sellPercentage}% of position: ${sellDecision.reason}`);
           } else {
             // For partial sells (tiered profit taking), update the position amount
             // The actual amount will be updated on the next monitoring cycle when we fetch the balance again
             logger.monitor(position, 'PARTIAL_SELL', `${sellDecision.reason} (${sellPercentage}%)`);
 
-            console.log(`Partially sold ${position.symbol} (${sellPercentage}%): ${sellDecision.reason}`);
-            console.log(`Position will be updated on next monitoring cycle`);
+            logger.info(`Partially sold ${position.symbol} (${sellPercentage}%): ${sellDecision.reason}`);
+            logger.info(`Position will be updated on next monitoring cycle`);
             logger.logUser(`Partially sold ${position.symbol} (${sellPercentage}% of position): ${sellDecision.reason}`);
             logger.logUser(`Position will be updated on next monitoring cycle`);
           }
         }
       }
     } catch (error) {
-      console.error(`Error monitoring position for ${position.symbol}: ${error.message}`);
+      logger.error(`Error monitoring position for ${position.symbol}: ${error.message}`);
     }
   }
 }
@@ -1229,11 +1195,11 @@ async function monitorPositions(jupiterService, dexService) {
  * @param {Connection} connection - Solana connection
  */
 async function processTokens(finalTokens, jupiterService) {
-  console.log(`Processing ${finalTokens.length} tokens for potential trades...`);
+  logger.info(`Processing ${finalTokens.length} tokens for potential trades...`);
 
-  // Skip if we already have a position (only allowing one at a time)
-  if (positions.size >= MAX_POSITIONS) {
-    console.log(`Already have a position. Only one position allowed at a time.`);
+  // Skip if we already have any positions
+  if (positions.size > 0) {
+    logger.info(`Already have ${positions.size} open position(s). Not looking for new opportunities.`);
     return;
   }
 
@@ -1248,13 +1214,13 @@ async function processTokens(finalTokens, jupiterService) {
 
     // Skip if token is blacklisted
     if (isBlacklisted(token.tokenAddress)) {
-      console.log(`Skipping blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      logger.debug(`Skipping blacklisted token: ${token.symbol} (${token.tokenAddress})`);
       continue;
     }
 
     // Check buy criteria
     if (meetsBuyCriteria(token)) {
-      console.log(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
+      logger.info(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
 
       // Execute buy with connection for token balance checking
       const position = await executeBuy(token, jupiterService, jupiterService.connection);
@@ -1262,16 +1228,15 @@ async function processTokens(finalTokens, jupiterService) {
         // Add to positions
         positions.set(token.tokenAddress, position);
 
-        console.log(`Bought ${token.symbol} at $${token.priceUsd}`);
+        logger.info(`Bought ${token.symbol} at $${token.priceUsd}`);
 
         // Log to user.log
-        const logger = require('./logger');
         logger.logUser(`Bought ${token.symbol} at $${token.priceUsd} for ${BOT_CONFIG.BUY_AMOUNT_SOL} SOL, received ${position.amount} tokens`);
 
         // Exit since we now have a position (only allowing one at a time)
         if (positions.size >= MAX_POSITIONS) {
-          console.log(`Position acquired. Only one position allowed at a time.`);
-          logger.logUser(`Position acquired. Only one position allowed at a time.`);
+          logger.info(`Position acquired. Maximum positions (${MAX_POSITIONS}) reached.`);
+          logger.logUser(`Position acquired. Maximum positions (${MAX_POSITIONS}) reached.`);
           break;
         }
       }
@@ -1291,7 +1256,7 @@ async function processTokens(finalTokens, jupiterService) {
  */
 async function executeTradingStrategy(finalTokens, services = {}) {
   try {
-    console.log('Initializing trading strategy...');
+    logger.info('Initializing trading strategy...');
 
     // Use provided services or initialize new ones
     const connection = services.connection || initializeConnection();
@@ -1301,7 +1266,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
 
     // Check if wallet has sufficient balance
     if (!walletInfo.hasMinimumBalance) {
-      console.error('Insufficient wallet balance for trading.');
+      logger.error('Insufficient wallet balance for trading.');
       return { success: false, reason: 'insufficient_balance' };
     }
 
@@ -1313,7 +1278,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
 
     // Set up position monitoring only if we have positions
     if (positions.size > 0) {
-      console.log(`Setting up position monitoring (every ${PRICE_CHECK_INTERVAL / 1000} seconds)...`);
+      logger.info(`Setting up position monitoring (every ${PRICE_CHECK_INTERVAL / 1000} seconds)...`);
 
       // Clear any existing interval
       if (monitoringInterval) {
@@ -1326,12 +1291,12 @@ async function executeTradingStrategy(finalTokens, services = {}) {
         PRICE_CHECK_INTERVAL
       );
 
-      console.log('Position monitoring started.');
+      logger.info('Position monitoring started.');
     } else {
-      console.log('No positions to monitor. Skipping monitoring setup.');
+      logger.info('No positions to monitor. Skipping monitoring setup.');
     }
 
-    console.log('Trading strategy initialized successfully.');
+    logger.info('Trading strategy initialized successfully.');
     return {
       success: true,
       positionsOpened: positions.size,
@@ -1343,7 +1308,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
       }))
     };
   } catch (error) {
-    console.error(`Trading strategy initialization failed: ${error.message}`);
+    logger.error(`Trading strategy initialization failed: ${error.message}`);
     return { success: false, reason: 'initialization_failed', error: error.message };
   }
 }
@@ -1353,29 +1318,29 @@ async function executeTradingStrategy(finalTokens, services = {}) {
  */
 async function stopTrading() {
   try {
-    console.log('Stopping trading activities...');
+    logger.info('Stopping trading activities...');
 
     // Clear monitoring interval
     if (monitoringInterval) {
       clearInterval(monitoringInterval);
       monitoringInterval = null;
-      console.log('Position monitoring stopped.');
+      logger.info('Position monitoring stopped.');
     }
 
     // Log current positions for reference
     if (positions.size > 0) {
-      console.log(`WARNING: ${positions.size} positions are still open:`);
+      logger.warn(`WARNING: ${positions.size} positions are still open:`);
       for (const [_, position] of positions.entries()) {
-        console.log(`- ${position.symbol}: ${position.amount} tokens at $${position.entryPrice}`);
+        logger.warn(`- ${position.symbol}: ${position.amount} tokens at $${position.entryPrice}`);
       }
-      console.log('These positions will need to be managed manually or when the bot restarts.');
+      logger.warn('These positions will need to be managed manually or when the bot restarts.');
     } else {
-      console.log('No open positions to manage.');
+      logger.info('No open positions to manage.');
     }
 
     return { success: true, message: 'Trading stopped successfully' };
   } catch (error) {
-    console.error(`Error stopping trading: ${error.message}`);
+    logger.error(`Error stopping trading: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

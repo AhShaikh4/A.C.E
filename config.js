@@ -38,6 +38,7 @@ const BOT_CONFIG = {
 
   // API keys
   MORALIS_API_KEY: process.env.MORALIS_API_KEY,
+  MORALIS_ENABLED: false, // Set to false to disable Moralis API calls
 
   // Logging settings
   LOG_LEVEL: process.env.LOG_LEVEL || 'info', // debug, info, warn, error

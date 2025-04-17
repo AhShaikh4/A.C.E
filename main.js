@@ -106,9 +106,9 @@ async function initialize() {
       dexService
     };
   } catch (error) {
-    console.error('\nInitialization Error:');
-    console.error('-------------------');
-    console.error(error.message);
+    logger.error('\nInitialization Error:');
+    logger.error('-------------------');
+    logger.error(error.message);
     throw error;
   }
 }
@@ -152,35 +152,25 @@ async function monitorPositions(services) {
 async function runCycle(services) {
   try {
     const startTime = Date.now();
-    logger.info(`Starting Analysis Cycle`);
+    logger.infoUser(`Starting Analysis Cycle`);
 
     // Check if we have open positions and how many
     const openPositionsCount = trading.getOpenPositionsCount();
     const hasOpenPositions = openPositionsCount > 0;
-    const isAtMaxPositions = openPositionsCount >= BOT_CONFIG.MAX_POSITIONS;
 
     // First, always monitor existing positions if we have any
     if (hasOpenPositions) {
-      const monitorResult = await monitorPositions(services);
-
-      // If we're at max positions, we can stop here
-      if (isAtMaxPositions) {
-        const duration = Date.now() - startTime;
-        logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
-        return [];
-      }
+      await monitorPositions(services);
 
       // Re-check position count after monitoring (in case positions were closed)
       const updatedPositionCount = trading.getOpenPositionsCount();
-      if (updatedPositionCount >= BOT_CONFIG.MAX_POSITIONS) {
+
+      // If we still have any open positions, don't look for new opportunities
+      if (updatedPositionCount > 0) {
+        logger.info(`Currently have ${updatedPositionCount} open position(s). Not looking for new opportunities.`);
         const duration = Date.now() - startTime;
         logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
         return [];
-      }
-
-      // If we still have room for more positions, log that we're looking for more
-      if (updatedPositionCount < BOT_CONFIG.MAX_POSITIONS) {
-        logger.info(`Currently have ${updatedPositionCount}/${BOT_CONFIG.MAX_POSITIONS} positions. Looking for more opportunities...`);
       }
     }
 
@@ -217,7 +207,7 @@ async function runCycle(services) {
             posTable.push([chalk.bold(pos.symbol), `$${pos.entryPrice}`, pos.amount]);
           });
 
-          console.log(posTable.toString());
+          logger.info(posTable.toString());
         }
       } else {
         logger.failSpinner(`Trading strategy execution failed: ${result.reason}`);
@@ -261,7 +251,7 @@ async function startBot() {
 
   try {
     // Initialize all services
-    logger.info('Initializing bot services...');
+    logger.infoUser('Initializing bot services...');
     const services = await initialize();
     isRunning = true;
 
@@ -357,7 +347,7 @@ async function stopBot() {
       });
 
       logger.warn(`Bot stopped with ${positions.length} open positions. These will need to be managed manually.`);
-      console.log(posTable.toString());
+      logger.info(posTable.toString());
     }
   } catch (error) {
     logger.failSpinner('Error stopping trading activities');
@@ -378,7 +368,7 @@ async function stopBot() {
  */
 async function main() {
   try {
-    logger.info('Starting Solana Memecoin Trading Bot...');
+    logger.infoUser('Starting Solana Memecoin Trading Bot...');
     const result = await startBot();
 
     if (!result.success) {

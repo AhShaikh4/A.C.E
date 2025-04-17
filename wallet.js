@@ -4,6 +4,7 @@ require('dotenv').config();
 const { Connection, PublicKey, Keypair, clusterApiUrl } = require('@solana/web3.js');
 const bs58 = require('bs58');
 const { selectMode, MODES } = require('./mode');
+const logger = require('./logger');
 
 // Constants
 const MINIMUM_SOL_BALANCE = 0.001; // Minimum SOL needed for transactions
@@ -22,9 +23,9 @@ function initializeConnection() {
     }
 
     try {
-        console.log(`Connecting to Solana ${network}...`);
+        logger.info(`Connecting to Solana ${network}...`);
         const connection = new Connection(clusterApiUrl(network), 'confirmed');
-        console.log(`✓ Successfully connected to Solana ${network}`);
+        logger.info(`✓ Successfully connected to Solana ${network}`);
         return connection;
     } catch (error) {
         throw new Error(`Failed to establish Solana connection: ${error.message}`);
@@ -61,7 +62,7 @@ function initializeWallet() {
         }
 
         const wallet = Keypair.fromSecretKey(privateKey);
-        console.log('Wallet initialized successfully');
+        logger.info('Wallet initialized successfully');
         return wallet;
     } catch (error) {
         if (error.message.includes('base58')) {
@@ -103,7 +104,7 @@ async function checkWalletBalance(wallet) {
             } catch (error) {
                 retries--;
                 if (retries === 0) throw error;
-                console.log(`Retry ${3-retries}/3: Failed to fetch balance, retrying...`);
+                logger.warn(`Retry ${3-retries}/3: Failed to fetch balance, retrying...`);
                 await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
             }
         }
@@ -111,11 +112,11 @@ async function checkWalletBalance(wallet) {
         const solBalance = (balance / 1000000000).toFixed(8);
         const hasMinimumBalance = parseFloat(solBalance) >= MINIMUM_SOL_BALANCE;
 
-        console.log('Wallet public key:', wallet.publicKey.toString());
-        console.log('Wallet balance:', solBalance, 'SOL');
+        logger.info('Wallet public key: ' + wallet.publicKey.toString());
+        logger.info('Wallet balance: ' + solBalance + ' SOL');
 
         if (!hasMinimumBalance) {
-            console.warn(`Warning: Wallet balance (${solBalance} SOL) is below minimum recommended balance (${MINIMUM_SOL_BALANCE} SOL)`);
+            logger.warn(`Warning: Wallet balance (${solBalance} SOL) is below minimum recommended balance (${MINIMUM_SOL_BALANCE} SOL)`);
         }
 
         return {
@@ -143,7 +144,7 @@ async function initializeMode(balance) {
 
 async function main() {
     try {
-        console.log('Initializing trading bot...');
+        logger.info('Initializing trading bot...');
 
         // Initialize wallet
         const wallet = initializeWallet();
@@ -156,28 +157,28 @@ async function main() {
         const { BOT_CONFIG } = require('./config');
         const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
 
-        console.log('\nWallet Status:');
-        console.log('-------------');
-        console.log(`Public Key: ${walletInfo.publicKey}`);
-        console.log(`Balance: ${walletInfo.balance} SOL`);
-        console.log(`Minimum Balance Check: ${walletInfo.hasMinimumBalance ? 'PASSED' : 'FAILED'}`);
-        console.log(`Trading Balance Check: ${walletInfo.balance >= buyAmount ? 'PASSED' : 'FAILED'} (min: ${buyAmount} SOL)`);
+        logger.info('\nWallet Status:');
+        logger.info('-------------');
+        logger.info(`Public Key: ${walletInfo.publicKey}`);
+        logger.info(`Balance: ${walletInfo.balance} SOL`);
+        logger.info(`Minimum Balance Check: ${walletInfo.hasMinimumBalance ? 'PASSED' : 'FAILED'}`);
+        logger.info(`Trading Balance Check: ${walletInfo.balance >= buyAmount ? 'PASSED' : 'FAILED'} (min: ${buyAmount} SOL)`);
 
         // Initialize bot mode
         const mode = await initializeMode(walletInfo.balance);
-        console.log(`\nBot Mode: ${mode.toUpperCase()}`);
+        logger.info(`\nBot Mode: ${mode.toUpperCase()}`);
 
         if (mode === 'monitoring') {
-            console.log('\nMonitoring mode active - Will watch market without trading');
+            logger.info('\nMonitoring mode active - Will watch market without trading');
         } else {
-            console.log('\nTrading mode active - Will execute trades automatically');
+            logger.info('\nTrading mode active - Will execute trades automatically');
         }
 
     } catch (error) {
-        console.error('\nError Details:');
-        console.error('-------------');
-        console.error(error.message);
-        console.error('\nPlease fix the above error and try again.');
+        logger.error('\nError Details:');
+        logger.error('-------------');
+        logger.error(error.message);
+        logger.error('\nPlease fix the above error and try again.');
         process.exit(1);
     }
 }

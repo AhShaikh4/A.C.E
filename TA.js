@@ -8,6 +8,8 @@ const { DexScreenerService } = require('./src/services/dexscreener.js');
 const { fetchTrendingPools } = require('./src/services/gecko.js');
 const { getTokenHolders, getTokenHoldersHistorical, getTokenAnalytics, getSnipers } = require('./src/services/morali.js');
 const { isBlacklisted, initializeBlacklist } = require('./blacklist');
+const logger = require('./logger');
+const { BOT_CONFIG } = require('./config');
 
 const SMA = technicalindicators.SMA;
 const EMA = technicalindicators.EMA;
@@ -38,15 +40,15 @@ const apiCall = async (url, retries = 5) => {
     } catch (error) {
       if (error.response?.status === 429) {
         const delay = Math.min(60000, 2000 * Math.pow(2, i));
-        console.error(`Rate limit hit (429). Waiting ${delay / 1000}s before retry ${i + 1}/${retries}`);
+        logger.error(`Rate limit hit (429). Waiting ${delay / 1000}s before retry ${i + 1}/${retries}`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
       if (error.response?.status === 404) {
-        console.warn(`Resource not found (404) for ${url}`);
+        logger.warn(`Resource not found (404) for ${url}`);
         return null;
       }
-      console.error(`API call failed: ${url} - ${error.response?.status || error.message}`);
+      logger.error(`API call failed: ${url} - ${error.response?.status || error.message}`);
       if (i === retries - 1) return null;
       await new Promise(resolve => setTimeout(resolve, 2500 * (i + 1)));
     }
@@ -57,13 +59,13 @@ const fetchOHLCV = async (network, poolAddress, tokenSymbol, timeframe, aggregat
   const url = `${BASE_URL}/networks/${network}/pools/${poolAddress}/ohlcv/${timeframe}?aggregate=${aggregate}&limit=100`;
   const data = await limiter.schedule(() => apiCall(url));
   if (!data?.data?.attributes?.ohlcv_list) {
-    console.warn(`No OHLCV data for ${tokenSymbol} (${timeframe}${aggregate > 1 ? `:${aggregate}m` : ''})`);
+    logger.warn(`No OHLCV data for ${tokenSymbol} (${timeframe}${aggregate > 1 ? `:${aggregate}m` : ''})`);
     return [];
   }
   const ohlcv = data.data.attributes.ohlcv_list.map(([timestamp, open, high, low, close, volume]) => ({
     timestamp, open, high, low, close, volume
   }));
-  console.log(`OHLCV data for ${tokenSymbol} (${timeframe}${aggregate > 1 ? `:${aggregate}m` : ''}): ${ohlcv.length} candles`);
+  logger.debug(`OHLCV data for ${tokenSymbol} (${timeframe}${aggregate > 1 ? `:${aggregate}m` : ''}): ${ohlcv.length} candles`);
   return ohlcv;
 };
 
@@ -208,7 +210,7 @@ const calculateIndicators = (ohlcv, options = {}) => {
   } = options;
 
   if (!ohlcv || ohlcv.length < 1) {
-    console.warn(`Insufficient OHLCV data: ${ohlcv?.length || 0} candles`);
+    logger.warn(`Insufficient OHLCV data: ${ohlcv?.length || 0} candles`);
     return {};
   }
 
@@ -318,15 +320,20 @@ const normalizeGeckoToken = async (pool, boostedSet, dexService, skipDetailedDat
         ohlcvData[key] = await fetchOHLCV('solana', attributes.address, attributes.name.split(' / ')[0], timeframe, aggregate);
       }
 
-      // Fetch Moralis data
-      const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
-      const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      [holders, historicalHolders, analytics, snipers] = await Promise.all([
-        getTokenHolders(tokenAddress).catch(() => ({ totalHolders: 0 })),
-        getTokenHoldersHistorical(tokenAddress, fromDate, toDate).catch(() => ({ result: [] })),
-        getTokenAnalytics(tokenAddress).catch(() => ({})),
-        getSnipers(attributes.address).catch(() => ({ result: [] }))
-      ]);
+      // Fetch Moralis data if enabled
+      if (BOT_CONFIG.MORALIS_ENABLED) {
+        const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
+        const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        [holders, historicalHolders, analytics, snipers] = await Promise.all([
+          getTokenHolders(tokenAddress).catch(() => ({ totalHolders: 0 })),
+          getTokenHoldersHistorical(tokenAddress, fromDate, toDate).catch(() => ({ result: [] })),
+          getTokenAnalytics(tokenAddress).catch(() => ({})),
+          getSnipers(attributes.address).catch(() => ({ result: [] }))
+        ]);
+      } else {
+        // Use fallback data when Moralis is disabled
+        logger.debug(`Moralis API disabled, using fallback data for ${tokenAddress}`);
+      }
     }
 
     return {
@@ -355,7 +362,7 @@ const normalizeGeckoToken = async (pool, boostedSet, dexService, skipDetailedDat
       snipers
     };
   } catch (error) {
-    console.error(`Error normalizing GeckoTerminal token ${pool.attributes.name.split(' / ')[0]}: ${error.message}`);
+    logger.error(`Error normalizing GeckoTerminal token ${pool.attributes.name.split(' / ')[0]}: ${error.message}`);
     return null;
   }
 };
@@ -465,7 +472,7 @@ const analyzeGeckoPool = async (pool, _network, boostedSet, dexService, skipDeta
   try {
     const normalizedToken = await normalizeGeckoToken(pool, boostedSet, dexService, skipDetailedData);
     if (!normalizedToken) {
-      console.warn(`Skipping pool ${pool.attributes.name} due to normalization failure`);
+      logger.warn(`Skipping pool ${pool.attributes.name} due to normalization failure`);
       return null;
     }
 
@@ -487,37 +494,29 @@ const analyzeGeckoPool = async (pool, _network, boostedSet, dexService, skipDeta
       score
     };
   } catch (error) {
-    console.error(`Error analyzing pool ${pool.attributes.name}: ${error.message}`);
+    logger.error(`Error analyzing pool ${pool.attributes.name}: ${error.message}`);
     return null;
   }
 };
 
 async function performTA(dexServiceParam) {
-  console.log('Starting advanced TA-based Solana memecoin analysis with tiered filtering...');
+  logger.infoUser('Starting advanced TA-based Solana memecoin analysis with tiered filtering...');
   const network = 'solana';
   const dexService = dexServiceParam || new DexScreenerService();
-
-  // Import logger
-  const logger = require('./logger');
-  logger.logUser('Starting advanced TA-based Solana memecoin analysis with tiered filtering...');
 
   // Initialize blacklist
   await initializeBlacklist();
   logger.logUser(`Loaded ${require('./blacklist').getBlacklistSize()} tokens from blacklist`);
 
   // Step 1: Fetch DexScreener Boosted Tokens
-  console.log('Step 1: Fetching and filtering boosted tokens from DexScreener...');
-  logger.logUser('Step 1: Fetching and filtering boosted tokens from DexScreener...');
+  logger.infoUser('Step 1: Fetching and filtering boosted tokens from DexScreener...');
   const allBoostedTokens = await dexService.getBoostedSolanaTokens();
-  console.log(`Found ${allBoostedTokens.length} unique boosted Solana tokens.`);
-  logger.logUser(`Found ${allBoostedTokens.length} unique boosted Solana tokens.`);
+  logger.infoUser(`Found ${allBoostedTokens.length} unique boosted Solana tokens.`);
 
   // Fetch pair data for all boosted tokens
-  console.log('Fetching pair data for boosted tokens...');
-  logger.logUser('Fetching pair data for boosted tokens...');
+  logger.infoUser('Fetching pair data for boosted tokens...');
   const boostedPairs = await dexService.getPairsFromBoosted(allBoostedTokens);
-  console.log(`Fetched pair data for ${boostedPairs.length} boosted tokens`);
-  logger.logUser(`Fetched pair data for ${boostedPairs.length} boosted tokens`);
+  logger.infoUser(`Fetched pair data for ${boostedPairs.length} boosted tokens`);
 
   // Enrich token data with pair data
   const enrichedBoostedTokens = allBoostedTokens.map(token => {
@@ -537,7 +536,7 @@ async function performTA(dexServiceParam) {
 
       // Check if token is blacklisted
       if (isBlacklisted(token.tokenAddress)) {
-        console.log(`Skipping blacklisted token: ${token.symbol || 'Unknown'} (${token.tokenAddress})`);
+        logger.debug(`Skipping blacklisted token: ${token.symbol || 'Unknown'} (${token.tokenAddress})`);
         return false;
       }
 
@@ -552,19 +551,18 @@ async function performTA(dexServiceParam) {
 
   // Create a set of boosted token addresses for reference
   const boostedSet = new Set(boostedTokens.map(token => token.tokenAddress));
-  console.log(`Filtered to ${boostedTokens.length} boosted tokens`);
-  logger.logUser(`Filtered to ${boostedTokens.length} boosted tokens`);
+  logger.infoUser(`Filtered to ${boostedTokens.length} boosted tokens`);
 
   // If no tokens pass the filter, suggest further loosening
   if (boostedTokens.length === 0) {
-    console.log('WARNING: No tokens passed the initial filter. Consider further loosening criteria:');
-    console.log('  - priceChange24h > -50 (currently -20)');
-    console.log('  - liquidityUsd >= 100 (currently 1000)');
-    console.log('  - volume24h >= 100 (currently 500)');
+    logger.warn('WARNING: No tokens passed the initial filter. Consider further loosening criteria:');
+    logger.warn('  - priceChange24h > -50 (currently -20)');
+    logger.warn('  - liquidityUsd >= 100 (currently 1000)');
+    logger.warn('  - volume24h >= 100 (currently 500)');
   }
 
   // Step 2: Fetch GeckoTerminal Trending Pools
-  console.log('Step 2: Fetching and filtering trending pools from GeckoTerminal...');
+  logger.info('Step 2: Fetching and filtering trending pools from GeckoTerminal...');
   const trendingPools = await fetchTrendingPools(network, ['1h', '6h'], 2, true);
 
   // Filter trending pools by criteria
@@ -573,7 +571,7 @@ async function performTA(dexServiceParam) {
 
     // Check if token is blacklisted
     if (isBlacklisted(tokenAddress)) {
-      console.log(`Skipping blacklisted token from trending pools: ${pool.attributes.name || 'Unknown'} (${tokenAddress})`);
+      logger.debug(`Skipping blacklisted token from trending pools: ${pool.attributes.name || 'Unknown'} (${tokenAddress})`);
       return false;
     }
 
@@ -611,12 +609,10 @@ async function performTA(dexServiceParam) {
 
   // Convert map to array and cap at 30 tokens
   const uniqueTokens = Array.from(tokenMap.values()).slice(0, 30);
-  console.log(`Combined to ${uniqueTokens.length} unique trending tokens`);
-  logger.logUser(`Combined to ${uniqueTokens.length} unique trending tokens`);
+  logger.infoUser(`Combined to ${uniqueTokens.length} unique trending tokens`);
 
   // Step 3: Enhanced Price Trend & Market Activity Filter
-  console.log('Step 3: Performing enhanced filtering with detailed pair data...');
-  logger.logUser('Step 3: Performing enhanced filtering with detailed pair data...');
+  logger.infoUser('Step 3: Performing enhanced filtering with detailed pair data...');
   const candidates = [];
 
   // Define function to check if a token has a quality uptrend
@@ -683,20 +679,19 @@ async function performTA(dexServiceParam) {
 
       if (detailedPairData) {
         // Use enhanced filtering with detailed pair data
-        console.log(`Analyzing detailed data for ${token.tokenAddress} (${detailedPairData.symbol})`);
+        logger.debug(`Analyzing detailed data for ${token.tokenAddress} (${detailedPairData.symbol})`);
 
         // Calculate uptrend score
         const uptrendScore = calculateUptrendScore(detailedPairData);
         // Normalize uptrend score to 0-100 scale (assuming max theoretical score of 60)
         const normalizedUptrendScore = Math.min(100, Math.max(0, (uptrendScore / 60) * 100));
-        console.log(`Uptrend score: ${normalizedUptrendScore.toFixed(2)}/100 (Raw: ${uptrendScore.toFixed(2)})`);
+        logger.debug(`Uptrend score: ${normalizedUptrendScore.toFixed(2)}/100 (Raw: ${uptrendScore.toFixed(2)})`);
         logger.logUser(`Analyzing detailed data for ${token.tokenAddress} (${detailedPairData.symbol})`);
         logger.logUser(`Uptrend score: ${normalizedUptrendScore.toFixed(2)}/100 (Raw: ${uptrendScore.toFixed(2)})`);
 
         // Check if token meets quality uptrend criteria (15 on normalized scale is equivalent to 30 on raw scale with max of 200)
         if (isQualityUptrend(detailedPairData) || normalizedUptrendScore > 50) {
-          console.log(`Token ${detailedPairData.symbol} passed enhanced filtering`);
-          logger.logUser(`Token ${detailedPairData.symbol} passed enhanced filtering`);
+          logger.infoUser(`Token ${detailedPairData.symbol} passed enhanced filtering`);
 
           // Add enhanced data to candidates
           candidates.push({
@@ -727,11 +722,11 @@ async function performTA(dexServiceParam) {
             rawUptrendScore: uptrendScore
           });
         } else {
-          console.log(`Token ${detailedPairData.symbol} failed enhanced filtering`);
+          logger.debug(`Token ${detailedPairData.symbol} failed enhanced filtering`);
           logger.logUser(`Token ${detailedPairData.symbol} failed enhanced filtering`);
         }
       } else {
-        console.warn(`No detailed pair data found for ${token.tokenAddress}, using basic data`);
+        logger.warn(`No detailed pair data found for ${token.tokenAddress}, using basic data`);
         // Fall back to basic criteria if detailed data is not available
         if ((dexData.priceChange?.h6 > 0 || dexData.priceChange?.h24 > 0) && dexData.priceChange?.m5 > -1) {
           // For GeckoTerminal tokens, normalize the data
@@ -768,18 +763,16 @@ async function performTA(dexServiceParam) {
         }
       }
     } catch (error) {
-      console.error(`Error processing token ${token.tokenAddress}: ${error.message}`);
+      logger.error(`Error processing token ${token.tokenAddress}: ${error.message}`);
     }
   }
 
   // Cap at 15 candidates
   const topCandidates = candidates.slice(0, 15);
-  console.log(`Filtered to ${topCandidates.length} uptrending candidates`);
-  logger.logUser(`Filtered to ${topCandidates.length} uptrending candidates`);
+  logger.infoUser(`Filtered to ${topCandidates.length} uptrending candidates`);
 
   // Step 4: Detailed TA
-  console.log('Step 4: Performing detailed technical analysis...');
-  logger.logUser('Step 4: Performing detailed technical analysis...');
+  logger.infoUser('Step 4: Performing detailed technical analysis...');
   const analyzedTokens = [];
 
   for (const token of topCandidates) {
@@ -824,7 +817,7 @@ async function performTA(dexServiceParam) {
         });
       }
     } catch (error) {
-      console.error(`Error analyzing token ${token.symbol}: ${error.message}`);
+      logger.error(`Error analyzing token ${token.symbol}: ${error.message}`);
     }
   }
 
@@ -833,51 +826,54 @@ async function performTA(dexServiceParam) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 7);
 
-  console.log(`Analyzed ${analyzedTokens.length} tokens with TA, found ${topAnalyzedTokens.length} high-scoring tokens`);
-  logger.logUser(`Analyzed ${analyzedTokens.length} tokens with TA, found ${topAnalyzedTokens.length} high-scoring tokens`);
+  logger.infoUser(`Analyzed ${analyzedTokens.length} tokens with TA, found ${topAnalyzedTokens.length} high-scoring tokens`);
 
   // Step 5: Moralis Validation (with fallback for API failures)
-  console.log('Step 5: Performing Moralis validation...');
-  logger.logUser('Step 5: Performing Moralis validation...');
+  logger.infoUser('Step 5: Performing Moralis validation...');
   let finalTokens = [];
 
-  for (const token of topAnalyzedTokens) {
-    try {
-      // Fetch Moralis data
-      const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
-      const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  // Check if Moralis API is enabled
+  if (BOT_CONFIG.MORALIS_ENABLED) {
+    for (const token of topAnalyzedTokens) {
+      try {
+        // Fetch Moralis data
+        const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
+        const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-      const [holders, historicalHolders, snipers] = await Promise.all([
-        getTokenHolders(token.tokenAddress).catch(() => ({ totalHolders: 0 })),
-        getTokenHoldersHistorical(token.tokenAddress, fromDate, toDate).catch(() => ({ result: [] })),
-        getSnipers(token.poolAddress).catch(() => ({ result: [] }))
-      ]);
+        const [holders, historicalHolders, snipers] = await Promise.all([
+          getTokenHolders(token.tokenAddress).catch(() => ({ totalHolders: 0 })),
+          getTokenHoldersHistorical(token.tokenAddress, fromDate, toDate).catch(() => ({ result: [] })),
+          getSnipers(token.poolAddress).catch(() => ({ result: [] }))
+        ]);
 
-      // Calculate holder change percentage
-      const holderChange24h = historicalHolders?.result?.length > 1
-        ? ((historicalHolders.result[historicalHolders.result.length - 1].totalHolders -
-            historicalHolders.result[0].totalHolders) / (historicalHolders.result[0].totalHolders || 1) * 100) || 0
-        : 0;
+        // Calculate holder change percentage
+        const holderChange24h = historicalHolders?.result?.length > 1
+          ? ((historicalHolders.result[historicalHolders.result.length - 1].totalHolders -
+              historicalHolders.result[0].totalHolders) / (historicalHolders.result[0].totalHolders || 1) * 100) || 0
+          : 0;
 
-      // Keep if holder change is positive and not too many snipers
-      if (holderChange24h > 0 && snipers.result.length < 50) {
-        finalTokens.push({
-          ...token,
-          holders,
-          historicalHolders,
-          snipers,
-          holderChange24h
-        });
+        // Keep if holder change is positive and not too many snipers
+        if (holderChange24h > 0 && snipers.result.length < 50) {
+          finalTokens.push({
+            ...token,
+            holders,
+            historicalHolders,
+            snipers,
+            holderChange24h
+          });
+        }
+      } catch (error) {
+        logger.error(`Error validating token ${token.symbol}: ${error.message}`);
       }
-    } catch (error) {
-      console.error(`Error validating token ${token.symbol}: ${error.message}`);
     }
+  } else {
+    logger.warn('Moralis API is disabled. Skipping Moralis validation step.');
   }
 
   // Fallback: If Moralis validation fails (API errors), use top tokens from TA
   if (finalTokens.length === 0 && topAnalyzedTokens.length > 0) {
-    console.log('WARNING: Moralis validation failed. Using top tokens from technical analysis as fallback.');
-    logger.logUser('WARNING: Moralis validation failed. Using top tokens from technical analysis as fallback.');
+    logger.warn('WARNING: Moralis validation failed. Using top tokens from technical analysis as fallback.');
+    logger.logUser('WARNING: Moralis validation failed. Using top tokens from technical analysis as fallback.', false);
 
     // Take top 3 tokens and ensure they have all necessary indicators
     finalTokens = await Promise.all(topAnalyzedTokens.slice(0, 3).map(async token => {
@@ -907,7 +903,7 @@ async function performTA(dexServiceParam) {
             holderChange24h: 0
           };
         } catch (error) {
-          console.error(`Error recalculating indicators for ${token.symbol}: ${error.message}`);
+          logger.error(`Error recalculating indicators for ${token.symbol}: ${error.message}`);
           // Return the token as is if recalculation fails
           return {
             ...token,
@@ -930,8 +926,7 @@ async function performTA(dexServiceParam) {
     }));
   }
 
-  console.log(`Final ${finalTokens.length} tokens after Moralis validation`);
-  logger.logUser(`Final ${finalTokens.length} tokens after Moralis validation`);
+  logger.infoUser(`Final ${finalTokens.length} tokens after Moralis validation`);
 
   // Step 6: Log and Return
   // Take top 5 tokens for display
@@ -1000,20 +995,20 @@ async function performTA(dexServiceParam) {
     });
   }
 
-  console.log(logContent);
+  logger.info(logContent);
   await fs.writeFile('gecko_analysis.log', logContent);
 
-  console.log('Technical analysis completed.');
+  logger.info('Technical analysis completed.');
   return finalTokens;
 }
 
 async function main() {
   try {
     const finalTokens = await performTA();
-    console.log(`Analysis complete. Found ${finalTokens.length} tokens.`);
+    logger.info(`Analysis complete. Found ${finalTokens.length} tokens.`);
     return finalTokens;
   } catch (error) {
-    console.error('Error in TA:', error.message);
+    logger.error('Error in TA:', error.message);
     throw error;
   }
 }
@@ -1021,9 +1016,9 @@ async function main() {
 // Only run main() if this file is executed directly, not when imported
 if (require.main === module) {
   main().then(tokens => {
-    console.log('Technical analysis completed. Use main.js to start trading.');
+    logger.info('Technical analysis completed. Use main.js to start trading.');
   }).catch(err => {
-    console.error('Fatal error:', err);
+    logger.error('Fatal error:', err);
     process.exit(1);
   });
 }

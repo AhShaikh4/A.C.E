@@ -1,6 +1,7 @@
 //mode.js
 
 const inquirer = require('inquirer');
+const logger = require('./logger');
 
 // Constants
 const MODES = {
@@ -18,17 +19,17 @@ const MODES = {
 async function selectMode(balance, minimumBalance, buyAmount) {
     // If balance is below minimum for transactions, force monitoring mode
     if (balance < minimumBalance) {
-        console.log(`\nInsufficient balance (${balance} SOL) for any operations.`);
-        console.log(`Minimum required for transactions: ${minimumBalance} SOL`);
-        console.log('Automatically switching to monitoring mode...\n');
+        logger.warn(`\nInsufficient balance (${balance} SOL) for any operations.`);
+        logger.warn(`Minimum required for transactions: ${minimumBalance} SOL`);
+        logger.info('Automatically switching to monitoring mode...\n');
         return MODES.MONITORING;
     }
 
     // If balance is below buy amount, disable trading mode
     if (balance < buyAmount) {
-        console.log(`\nInsufficient balance (${balance} SOL) for trading mode.`);
-        console.log(`Minimum required for trading: ${buyAmount} SOL`);
-        console.log('Automatically switching to monitoring mode...\n');
+        logger.warn(`\nInsufficient balance (${balance} SOL) for trading mode.`);
+        logger.warn(`Minimum required for trading: ${buyAmount} SOL`);
+        logger.info('Automatically switching to monitoring mode...\n');
         return MODES.MONITORING;
     }
 

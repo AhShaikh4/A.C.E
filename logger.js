@@ -185,14 +185,17 @@ function logDetailed(message) {
 /**
  * Log to the user log file with user-friendly formatting
  * @param {string} message - Message to log
+ * @param {boolean} logToConsole - Whether to log to console (default: true)
  */
-function logUser(message) {
+function logUser(message, logToConsole = true) {
   // Write directly to user.log file
   const formattedMessage = `[${getESTTimestamp()}] USER: ${message}\n`;
   fs.appendFileSync(path.join(logDir, 'user.log'), formattedMessage);
 
-  // Always show user messages in console
-  console.log(formatConsoleMessage('USER', message));
+  // Only show user messages in console if logToConsole is true
+  if (logToConsole) {
+    console.log(formatConsoleMessage('USER', message));
+  }
 }
 
 /**
@@ -545,8 +548,8 @@ function info(message) {
     // Log to console
     console.log(formatConsoleMessage('INFO', message));
 
-    // Log to user.log for important info
-    logUser(message);
+    // Log to user.log for important info, but don't log to console again
+    logUser(message, false);
   }
 }
 
@@ -559,8 +562,8 @@ function warn(message) {
     // Log to console
     console.log(formatConsoleMessage('WARN', message));
 
-    // Log to user.log for important warnings
-    logUser(`WARNING: ${message}`);
+    // Log to user.log for important warnings, but don't log to console again
+    logUser(`WARNING: ${message}`, false);
   }
 }
 
@@ -583,8 +586,8 @@ function error(message, error) {
     const errorEntry = `[${getESTTimestamp()}] ERROR: ${message}${errorDetails}\n`;
     fs.appendFileSync(path.join(logDir, 'errors.log'), errorEntry);
 
-    // Also log to user.log for important errors
-    logUser(`ERROR: ${message}`);
+    // Also log to user.log for important errors, but don't log to console again
+    logUser(`ERROR: ${message}`, false);
   }
 }
 
@@ -756,8 +759,8 @@ function system(message) {
   // Log to console
   console.log(formatConsoleMessage('SYSTEM', message));
 
-  // Also log to user.log for important system messages
-  logUser(`SYSTEM: ${message}`);
+  // Also log to user.log for important system messages, but don't log to console again
+  logUser(`SYSTEM: ${message}`, false);
 }
 
 /**
@@ -776,6 +779,20 @@ function monitor(position, action, reason) {
   });
 }
 
+/**
+ * Log an info message and also log it to the user.log file
+ * @param {string} message - Message to log
+ */
+function infoUser(message) {
+  if (CURRENT_LOG_LEVEL_VALUE <= LOG_LEVELS.INFO.value) {
+    // Log to console
+    console.log(formatConsoleMessage('INFO', message));
+
+    // Log to user.log for important info, but don't log to console again
+    logUser(message, false);
+  }
+}
+
 module.exports = {
   // Standard logging functions
   debug,
@@ -786,6 +803,7 @@ module.exports = {
   analysis,
   system,
   monitor,
+  infoUser, // Add the new function
 
   // Specialized logging functions
   logDetailed,
