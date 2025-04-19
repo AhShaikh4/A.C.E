@@ -1,4 +1,4 @@
-//morali.js
+//moralis.js
 
 require('dotenv').config();
 const axios = require('axios');

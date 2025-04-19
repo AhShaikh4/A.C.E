@@ -5,7 +5,7 @@ const { PublicKey, Connection } = require('@solana/web3.js');
 const { initializeConnection, initializeWallet, checkWalletBalance } = require('./wallet');
 const JupiterService = require('./src/services/jupiter');
 const { DexScreenerService } = require('./src/services/dexscreener');
-const { getTokenHoldersHistorical } = require('./src/services/morali');
+const { getTokenHoldersHistorical } = require('./src/services/moralis');
 
 // Import functions from TA.js
 const { fetchOHLCV, calculateIndicators } = require('./TA');
