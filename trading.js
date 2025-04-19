@@ -421,12 +421,15 @@ async function executeBuy(token, jupiterService, connection) {
         const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
         preSwapBalance = parseFloat(balance.uiAmount);
         logger.debug(`Pre-swap direct wallet balance of ${token.symbol}: ${preSwapBalance}`);
+        console.log(`[DIRECT WALLET] Pre-swap balance of ${token.symbol}: ${preSwapBalance}`);
       } else {
         logger.debug(`No token account found for ${token.symbol}, assuming zero balance`);
+        console.log(`[DIRECT WALLET] No token account found for ${token.symbol}, assuming zero balance`);
         preSwapBalance = 0;
       }
     } catch (walletError) {
       logger.warn(`Failed to get direct wallet balance: ${walletError.message}`);
+      console.log(`[DIRECT WALLET] Failed to get balance: ${walletError.message}`);
 
       // Fallback to Jupiter API
       try {
@@ -435,12 +438,15 @@ async function executeBuy(token, jupiterService, connection) {
           const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
           preSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
           logger.debug(`Pre-swap Jupiter API balance of ${token.symbol}: ${preSwapBalance}`);
+          console.log(`[JUPITER API] Pre-swap balance of ${token.symbol}: ${preSwapBalance}`);
         } else {
           logger.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
+          console.log(`[JUPITER API] Unexpected data structure: ${JSON.stringify(balances)}`);
           preSwapBalance = 0;
         }
       } catch (jupiterError) {
         logger.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);
+        console.log(`[JUPITER API] Failed to get balance: ${jupiterError.message}`);
         preSwapBalance = 0;
       }
     }
@@ -523,9 +529,12 @@ async function executeBuy(token, jupiterService, connection) {
         const postSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
         actualAmount = postSwapBalance - preSwapBalance;
         logger.debug(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
+        console.log(`[JUPITER API] Post-swap balance of ${token.symbol}: ${postSwapBalance}`);
         logger.debug(`Calculated amount received: ${actualAmount}`);
+        console.log(`[JUPITER API] Calculated amount received: ${actualAmount}`);
       } else {
         logger.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
+        console.log(`[JUPITER API] Unexpected data structure: ${JSON.stringify(balances)}`);
         // Fall back to direct wallet balance check
         throw new Error('Invalid balance data structure');
       }
@@ -533,6 +542,7 @@ async function executeBuy(token, jupiterService, connection) {
       // If Jupiter API gives suspicious results, try direct wallet balance check
       if (actualAmount <= 0 || actualAmount > 1000000000) {
         logger.warn(`Suspicious amount received (${actualAmount}), checking direct wallet balance`);
+        console.log(`[JUPITER API] Suspicious amount received (${actualAmount}), falling back to direct wallet check`);
 
         // Get token balance directly from the wallet
         const tokenAccount = await connection.getParsedTokenAccountsByOwner(
@@ -545,6 +555,7 @@ async function executeBuy(token, jupiterService, connection) {
           const directBalance = parseFloat(balance.uiAmount);
           const tokenDecimals = balance.decimals;
           logger.debug(`Direct wallet balance of ${token.symbol}: ${directBalance} (decimals: ${tokenDecimals})`);
+          console.log(`[DIRECT WALLET] Post-swap balance of ${token.symbol}: ${directBalance} (decimals: ${tokenDecimals})`);
 
           // Use direct balance as the actual amount
           actualAmount = directBalance;
@@ -553,12 +564,14 @@ async function executeBuy(token, jupiterService, connection) {
           token.tokenDecimals = tokenDecimals;
         } else {
           logger.warn(`No token account found for ${token.symbol}, falling back to estimate`);
+          console.log(`[DIRECT WALLET] No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
           actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       }
     } catch (error) {
       logger.warn(`Failed to get post-swap balance: ${error.message}`);
+      console.log(`[JUPITER API] Failed to get post-swap balance: ${error.message}`);
 
       try {
         // Try direct wallet balance check as fallback
@@ -571,14 +584,18 @@ async function executeBuy(token, jupiterService, connection) {
           const balance = tokenAccount.value[0].account.data.parsed.info.tokenAmount;
           const directBalance = parseFloat(balance.uiAmount);
           logger.debug(`Direct wallet balance of ${token.symbol}: ${directBalance}`);
+          console.log(`[DIRECT WALLET] Post-swap balance of ${token.symbol}: ${directBalance}`);
           actualAmount = directBalance;
         } else {
           // Last resort fallback
+          console.log(`[DIRECT WALLET] No token account found for ${token.symbol}, using estimate`);
           actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
         }
       } catch (secondError) {
         logger.warn(`Failed to get direct wallet balance: ${secondError.message}`);
+        console.log(`[DIRECT WALLET] Failed to get balance: ${secondError.message}`);
         // Last resort fallback
+        console.log(`[BALANCE] All balance checks failed, using estimate`);
         actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
       }
     }
