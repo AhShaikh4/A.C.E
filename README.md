@@ -42,9 +42,10 @@ For a detailed breakdown of all features, see [features.md](features.md).
    ```
 
 3. Set up environment variables:
-   - Copy `.env.example` to `.env`
-   - Fill in your private keys and API keys
-   - See [env-variables.md](env-variables.md) for detailed configuration options
+   - Create a .env file locally and add the necessary variables. See [env-variables.md](env-variables.md) for a detailed guide. Also never
+
+**Important:** Never share your private keys or `.env` file.
+
 
 ### Usage
 
@@ -138,18 +139,16 @@ A.C.E. implements several security measures:
 - Slippage protection to prevent unexpected execution prices
 - Transaction validation before signing
 
-**Important:** Never share your private keys or `.env` file.
+
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
+- [Augment AI](https://www.augmentcode.com/) - Agentic AI assistant that helped code this entire bot with its amazing context understanding and coding capabilities
 - [Jupiter](https://jup.ag/) - Solana's liquidity aggregator
 - [DexScreener](https://dexscreener.com/) - DEX market data
 - [GeckoTerminal](https://geckoterminal.com/) - Market data and analytics
