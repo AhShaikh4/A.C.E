@@ -26,75 +26,7 @@ class JupiterService {
     this.userPublicKey = wallet ? wallet.publicKey : null;
   }
 
-  // --- Utility Methods ---
-  async signAndSendTransaction(transaction) {
-    if (!this.wallet) throw new Error('Wallet not provided');
-
-    // Handle different transaction types (VersionedTransaction vs Transaction)
-    if (transaction instanceof VersionedTransaction) {
-      // For VersionedTransaction
-      transaction.sign([this.wallet]);
-    } else {
-      // For regular Transaction
-      transaction.sign(this.wallet);
-    }
-
-    try {
-      // Send transaction with higher priority and retry options
-      const signature = await this.connection.sendRawTransaction(transaction.serialize(), {
-        skipPreflight: true,
-        maxRetries: 3,
-        preflightCommitment: 'processed'
-      });
-
-      try {
-        // Try to confirm with a longer timeout (120 seconds)
-        const confirmation = await this.connection.confirmTransaction(
-          signature,
-          'confirmed',
-          120 * 1000 // 120 second timeout
-        );
-
-        if (confirmation.value.err) {
-          throw new Error(`Transaction failed: ${signature}`);
-        }
-
-        console.log(`Transaction confirmed: ${signature}`);
-        return signature;
-      } catch (confirmError) {
-        // If confirmation times out, check transaction status manually
-        if (confirmError.message && confirmError.message.includes('was not confirmed')) {
-          console.log(`Transaction confirmation timed out, checking status manually: ${signature}`);
-
-          // Wait a bit longer for potential confirmation
-          await new Promise(resolve => setTimeout(resolve, 10000));
-
-          // Check transaction status
-          const status = await this.connection.getSignatureStatus(signature, { searchTransactionHistory: true });
-
-          if (status && status.value) {
-            if (status.value.err) {
-              throw new Error(`Transaction failed after timeout: ${signature}, error: ${JSON.stringify(status.value.err)}`);
-            }
-
-            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
-              console.log(`Transaction ${signature} was confirmed after timeout check!`);
-              return signature;
-            }
-          }
-
-          // If we can't determine status, throw the original error
-          throw confirmError;
-        } else {
-          // For other confirmation errors, rethrow
-          throw confirmError;
-        }
-      }
-    } catch (error) {
-      console.error(`Transaction error: ${error.message}`);
-      throw error;
-    }
-  }
+  // --- Utility Methods have been removed as they're not needed for Ultra API ---
 
   // --- Ultra API ---
   async getBalances(address = this.userPublicKey) {
@@ -156,13 +88,12 @@ class JupiterService {
     return response.data;
   }
 
-  async executeUltraSwap(inputMint, outputMint, amount, options = {}) {
+  async executeUltraSwap(inputMint, outputMint, amount) {
     /**
      * Execute a swap using Ultra API (two-step process)
      * @param {string} inputMint - Input token mint address
      * @param {string} outputMint - Output token mint address
      * @param {number} amount - Amount to swap in raw units
-     * @param {Object} options - Additional options like slippageBps
      * @returns {string} Transaction signature
      */
     try {
