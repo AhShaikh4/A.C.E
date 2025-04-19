@@ -486,21 +486,16 @@ async function executeBuy(token, jupiterService, connection) {
     // Using fixed buy amount as requested
     logger.info(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
 
-    // Execute swap from SOL to token with higher priority fee and longer timeout
+    // Execute swap from SOL to token using Ultra API
     let txSignature;
     let transactionTimedOut = false;
 
     try {
-      txSignature = await jupiterService.executeSwap(
+      // Use the new executeUltraSwap method which uses Jupiter's Ultra API
+      txSignature = await jupiterService.executeUltraSwap(
         SOL_MINT,
         token.tokenAddress,
-        BUY_AMOUNT_LAMPORTS,
-        {
-          slippageBps: SLIPPAGE_BPS,
-          priorityFee: "auto", // Use auto priority fee to match successful sell parameters
-          dynamicComputeUnitLimit: true, // Use dynamic compute limit
-          timeout: 120000 // Increase timeout to 2 minutes
-        }
+        BUY_AMOUNT_LAMPORTS
       );
       logger.info(`Transaction confirmed: ${txSignature}`);
     } catch (error) {
@@ -754,46 +749,23 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
     logger.info(`Executing swap: ${tokenAmount} ${position.symbol} (${rawTokenAmount} raw units) to SOL with ${SLIPPAGE_BPS/100}% slippage`);
 
     try {
-      // Get quote first to validate the swap using raw amount
-      const quote = await jupiterService.getSwapQuote(
-        position.tokenAddress,
-        SOL_MINT,
-        rawTokenAmount,
-        { slippageBps: SLIPPAGE_BPS }
-      );
-
-      logger.debug(`Quote received: ${quote.outAmount} lamports (≈${quote.outAmount/1e9} SOL)`);
-
-      // Check if the quote is valid
-      if (!quote || !quote.outAmount) {
-        throw new Error(`Invalid quote received: ${JSON.stringify(quote)}`);
-      }
-
       // If the amount is very small, log a warning
       if (tokenAmount < 10) {
-        logger.warn(`Small token amount detected (${tokenAmount}), using higher slippage to ensure transaction success`);
+        logger.warn(`Small token amount detected (${tokenAmount}), proceeding with caution`);
       }
 
-      // Execute the swap with higher priority fee for sell transactions
+      // Execute the swap using Ultra API
       let txSignature;
       let transactionTimedOut = false;
 
       try {
-        // Use much higher slippage for sell transactions to ensure they go through
-        const sellSlippage = 2000; // 20% slippage for sells
-        logger.debug(`Using ${sellSlippage/100}% slippage for sell transaction`);
+        // Use the new executeUltraSwap method which uses Jupiter's Ultra API
+        logger.debug(`Executing Ultra swap: ${position.tokenAddress} → ${SOL_MINT}, amount: ${rawTokenAmount}`);
 
-        txSignature = await jupiterService.executeSwap(
+        txSignature = await jupiterService.executeUltraSwap(
           position.tokenAddress,
           SOL_MINT,
-          rawTokenAmount, // Use raw token amount instead of UI amount
-          {
-            slippageBps: sellSlippage,
-            // Use auto priority fee with multiplier to ensure transaction goes through
-            priorityFee: "auto",
-            dynamicComputeUnitLimit: true,
-            timeout: 180000 // Increase timeout to 3 minutes
-          }
+          rawTokenAmount // Use raw token amount
         );
 
         logger.info(`Sell transaction confirmed: ${txSignature}`);
@@ -874,30 +846,12 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
           const finalRawAmount = Math.floor(finalUIAmount * Math.pow(10, tokenDecimals));
           logger.debug(`Final retry amount: ${finalUIAmount} ${position.symbol} (${finalRawAmount} raw units)`);
 
-          // Get quote with much higher slippage using raw amount
-          const retryQuote = await jupiterService.getSwapQuote(
+          logger.debug(`Executing Ultra swap with reduced amount: ${position.tokenAddress} → ${SOL_MINT}, amount: ${finalRawAmount}`);
+
+          const retryTxSignature = await jupiterService.executeUltraSwap(
             position.tokenAddress,
             SOL_MINT,
-            finalRawAmount, // Use raw amount
-            { slippageBps: retrySlippage } // Much higher slippage for desperate retry
-          );
-
-          if (!retryQuote || !retryQuote.outAmount) {
-            throw new Error(`Invalid quote received for retry: ${JSON.stringify(retryQuote)}`);
-          }
-
-          logger.debug(`Retry quote received: ${retryQuote.outAmount} lamports (≈${retryQuote.outAmount/1e9} SOL)`);
-
-          const retryTxSignature = await jupiterService.executeSwap(
-            position.tokenAddress,
-            SOL_MINT,
-            finalRawAmount, // Use raw amount
-            {
-              slippageBps: retrySlippage,
-              priorityFee: "auto", // Use auto priority fee
-              dynamicComputeUnitLimit: true, // Use dynamic compute limit
-              timeout: 180000 // 3 minutes timeout
-            }
+            finalRawAmount // Use raw amount
           );
 
           logger.info(`Sell transaction with reduced amount confirmed: ${retryTxSignature}`);

@@ -1,4 +1,4 @@
-// logger.js - Enhanced logging utility for the Solana Memecoin Trading Bot
+// logger.js - Enhanced logging utility for A.C.E (AutoApe)
 
 const fs = require('fs');
 const path = require('path');

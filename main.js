@@ -14,7 +14,8 @@ const logger = require('./logger');
 const { initializeBlacklist } = require('./blacklist');
 
 // Display welcome banner
-logger.displayBanner('Solana Memecoin Bot', 'blue');
+logger.displayBanner('A.C.E', 'blue');
+logger.displayBox('Algorithmic Coin Engine', 'Welcome', 'info');
 
 // Global state
 let isRunning = false;
@@ -27,7 +28,7 @@ const ANALYSIS_INTERVAL = BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES * 60 * 1000; // C
  */
 async function initialize() {
   // Start initialization with banner and spinner
-  logger.startSpinner('Initializing Solana Memecoin Trading Bot...');
+  logger.startSpinner('Initializing A.C.E...');
 
   try {
     // Initialize wallet and connection
@@ -251,7 +252,7 @@ async function startBot() {
 
   try {
     // Initialize all services
-    logger.infoUser('Initializing bot services...');
+    logger.infoUser('Initializing A.C.E services...');
     const services = await initialize();
     isRunning = true;
 
@@ -357,7 +358,7 @@ async function stopBot() {
   isRunning = false;
 
   // Display goodbye message
-  logger.displayBox('Thank you for using the Solana Memecoin Trading Bot!', 'Goodbye', 'info');
+  logger.displayBox('Thank you for using A.C.E!', 'Goodbye', 'info');
   logger.info('Bot stopped successfully.');
 
   return { success: true, message: 'Bot stopped successfully' };
@@ -368,7 +369,7 @@ async function stopBot() {
  */
 async function main() {
   try {
-    logger.infoUser('Starting Solana Memecoin Trading Bot...');
+    logger.infoUser('Starting A.C.E...');
     const result = await startBot();
 
     if (!result.success) {

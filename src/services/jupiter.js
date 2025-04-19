@@ -1,5 +1,17 @@
 //jupiter.js
 
+/**
+ * Jupiter API Service
+ *
+ * This module provides a service for interacting with Jupiter's APIs:
+ * - Ultra API: A two-step process for executing swaps with better performance and MEV protection
+ *   (95% of swaps execute in under 2 seconds)
+ * - Trigger API: For limit orders
+ * - Recurring API: For recurring orders
+ * - Token API: For token information
+ * - Price API: For token prices
+ */
+
 const axios = require('axios');
 const { Connection, PublicKey, Transaction, VersionedTransaction } = require('@solana/web3.js');
 const Bottleneck = require('bottleneck');
@@ -139,75 +151,66 @@ class JupiterService {
      * Execute a signed order
      * @returns {Object} Execution status
      */
+    // Use base64 encoding for Ultra API as per documentation
+    // The Ultra API expects the transaction to be base64 encoded, not bs58 encoded
+    const serializedTransaction = signedTransaction.serialize();
+    const base64Transaction = Buffer.from(serializedTransaction).toString('base64');
+
+    console.log('Executing order with requestId:', requestId);
+
     const response = await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/ultra/v1/execute`, {
-        signedTransaction: bs58.encode(signedTransaction.serialize()),
+        signedTransaction: base64Transaction,
         requestId,
       })
     );
     return response.data;
   }
 
-  // --- Swap API ---
-  async getSwapQuote(inputMint, outputMint, amount, options = {}) {
+  async executeUltraSwap(inputMint, outputMint, amount, options = {}) {
     /**
-     * Fetch a swap quote
-     * @param {Object} options - slippageBps, swapMode, dexes, etc.
-     * @returns {Object} Quote details
-     */
-    const params = {
-      inputMint,
-      outputMint,
-      amount,
-      slippageBps: options.slippageBps || DEFAULT_SLIPPAGE_BPS,
-      swapMode: options.swapMode || 'ExactIn',
-      ...options,
-    };
-    const response = await limiter.schedule(() =>
-      axios.get(`${JUPITER_API}/swap/v1/quote`, { params })
-    );
-    return response.data;
-  }
-
-  async executeSwap(inputMint, outputMint, amount, options = {}) {
-    /**
-     * Execute a swap transaction
-     * @param {Object} options - slippageBps, priorityFee, etc.
+     * Execute a swap using Ultra API (two-step process)
+     * @param {string} inputMint - Input token mint address
+     * @param {string} outputMint - Output token mint address
+     * @param {number} amount - Amount to swap in raw units
+     * @param {Object} options - Additional options like slippageBps
      * @returns {string} Transaction signature
      */
-    const quote = await this.getSwapQuote(inputMint, outputMint, amount, options);
-    const swapResponse = await limiter.schedule(() =>
-      axios.post(`${JUPITER_API}/swap/v1/swap`, {
-        userPublicKey: this.userPublicKey.toBase58(),
-        quoteResponse: quote,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: options.priorityFee || DEFAULT_PRIORITY_FEE,
-        ...options,
-      })
-    );
+    try {
+      console.log(`Creating Ultra swap order: ${inputMint} → ${outputMint}, amount: ${amount}`);
 
-    const swapTxBuf = Buffer.from(swapResponse.data.swapTransaction, 'base64');
-    let transaction = VersionedTransaction.deserialize(swapTxBuf);
-    return await this.signAndSendTransaction(transaction);
+      // Step 1: Create the order
+      const orderResponse = await this.createOrder(inputMint, outputMint, amount);
+
+      if (!orderResponse.transaction) {
+        throw new Error(`Failed to create order: No transaction returned. Response: ${JSON.stringify(orderResponse)}`);
+      }
+
+      // Step 2: Deserialize and sign the transaction
+      const transactionBuffer = Buffer.from(orderResponse.transaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(transactionBuffer);
+
+      // Step 3: Sign the transaction
+      transaction.sign([this.wallet]);
+
+      // Step 4: Execute the order
+      // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+      const executeResponse = await this.executeOrder(transaction, orderResponse.requestId);
+
+      // Step 5: Check for success and return the signature
+      if (executeResponse.status === 'Success') {
+        console.log(`Ultra swap successful: ${executeResponse.signature}`);
+        return executeResponse.signature;
+      } else {
+        throw new Error(`Ultra swap failed: ${executeResponse.error || JSON.stringify(executeResponse)}`);
+      }
+    } catch (error) {
+      console.error(`Ultra swap execution failed: ${error.message}`);
+      throw error;
+    }
   }
 
-  async getSwapInstructions(inputMint, outputMint, amount, options = {}) {
-    /**
-     * Get swap instructions for manual transaction building
-     * @returns {Object} Swap instructions
-     */
-    const quote = await this.getSwapQuote(inputMint, outputMint, amount, options);
-    const response = await limiter.schedule(() =>
-      axios.post(`${JUPITER_API}/swap/v1/swap-instructions`, {
-        userPublicKey: this.userPublicKey.toBase58(),
-        quoteResponse: quote,
-        wrapAndUnwrapSol: true,
-        ...options,
-      })
-    );
-    return response.data;
-  }
+  // --- Swap API methods have been removed in favor of Ultra API ---
 
   async getProgramIdToLabel() {
     /**
@@ -242,10 +245,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/trigger/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     return response.data.order;
@@ -269,10 +278,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/trigger/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     console.log(`Trigger order canceled: ${order}`);
@@ -316,10 +331,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/recurring/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     console.log(`Recurring order created`);
@@ -343,10 +364,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/recurring/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     console.log(`Recurring order canceled: ${order}`);
@@ -369,10 +396,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/recurring/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     console.log(`Deposited ${amount} into order: ${order}`);
@@ -397,10 +430,16 @@ class JupiterService {
     let transaction = Transaction.from(txBuf);
     await this.signAndSendTransaction(transaction);
 
+    // Handle bs58 encoding properly (handle both CommonJS and ES module versions)
+    const encodeFunction = bs58.encode || bs58.default?.encode;
+    if (!encodeFunction) {
+      throw new Error('bs58 encode function not found');
+    }
+
     await limiter.schedule(() =>
       axios.post(`${JUPITER_API}/recurring/v1/execute`, {
         requestId: response.data.requestId,
-        signedTransaction: bs58.encode(transaction.serialize()),
+        signedTransaction: encodeFunction(transaction.serialize()),
       })
     );
     console.log(`Withdrawn from order: ${order}`);
@@ -522,9 +561,9 @@ class JupiterService {
   const wallet = initializeWallet();
   const jupiter = new JupiterService(null, wallet);
 
-  // Example: Execute a swap
-  const signature = await jupiter.executeSwap(SOL_MINT, 'YOUR_MEMECOIN_MINT', 1000000000);
-  console.log(`Swap executed: ${signature}`);
+  // Example: Execute a swap using Ultra API
+  const signature = await jupiter.executeUltraSwap(SOL_MINT, 'YOUR_MEMECOIN_MINT', 1000000000);
+  console.log(`Ultra swap executed: ${signature}`);
 
   // Example: Get balances
   const balances = await jupiter.getBalances();
