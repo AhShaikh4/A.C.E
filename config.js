@@ -115,7 +115,7 @@ const SELL_CRITERIA = {
     ENABLED: true,
     TIERS: [
       { PERCENT: 15, POSITION_PERCENT: 30 },  // Sell 30% when profit reaches 15%
-      { PERCENT: 40, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 40%
+      { PERCENT: 30, POSITION_PERCENT: 30 }, // Sell another 30% when profit reaches 30%
       // Final 40% uses the PROFIT_TARGET (100%) or trailing stop
     ]
   },
