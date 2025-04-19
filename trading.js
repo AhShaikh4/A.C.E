@@ -516,11 +516,19 @@ async function executeBuy(token, jupiterService, connection) {
     try {
       // Try to get balance from Jupiter API first
       const balances = await jupiterService.getBalances();
-      const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
-      const postSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
-      actualAmount = postSwapBalance - preSwapBalance;
-      logger.debug(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
-      logger.debug(`Calculated amount received: ${actualAmount}`);
+
+      // Add proper error checking
+      if (balances && balances.tokens && Array.isArray(balances.tokens)) {
+        const tokenBalance = balances.tokens.find(t => t.mint === token.tokenAddress);
+        const postSwapBalance = tokenBalance ? parseFloat(tokenBalance.uiAmount) : 0;
+        actualAmount = postSwapBalance - preSwapBalance;
+        logger.debug(`Post-swap balance of ${token.symbol} from Jupiter API: ${postSwapBalance}`);
+        logger.debug(`Calculated amount received: ${actualAmount}`);
+      } else {
+        logger.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
+        // Fall back to direct wallet balance check
+        throw new Error('Invalid balance data structure');
+      }
 
       // If Jupiter API gives suspicious results, try direct wallet balance check
       if (actualAmount <= 0 || actualAmount > 1000000000) {
@@ -661,13 +669,19 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
     if (tokenAmount === null) {
       try {
         const balances = await jupiterService.getBalances();
-        const tokenBalance = balances.tokens.find(t => t.mint === position.tokenAddress);
-        if (tokenBalance && tokenBalance.uiAmount > 0) {
-          fullTokenAmount = tokenBalance.uiAmount;
-          // Calculate the amount to sell based on the sellPercentage
-          tokenAmount = fullTokenAmount * (sellPercentage / 100);
-          logger.debug(`Using Jupiter API balance: ${fullTokenAmount} ${position.symbol}`);
-          logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
+
+        // Add proper error checking
+        if (balances && balances.tokens && Array.isArray(balances.tokens)) {
+          const tokenBalance = balances.tokens.find(t => t.mint === position.tokenAddress);
+          if (tokenBalance && tokenBalance.uiAmount > 0) {
+            fullTokenAmount = tokenBalance.uiAmount;
+            // Calculate the amount to sell based on the sellPercentage
+            tokenAmount = fullTokenAmount * (sellPercentage / 100);
+            logger.debug(`Using Jupiter API balance: ${fullTokenAmount} ${position.symbol}`);
+            logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
+          }
+        } else {
+          logger.warn(`Jupiter API returned unexpected data structure: ${JSON.stringify(balances)}`);
         }
       } catch (jupiterError) {
         logger.warn(`Failed to get Jupiter API balance: ${jupiterError.message}`);

@@ -32,7 +32,7 @@ class JupiterService {
     /**
      * Fetch token balances for an address
      * @param {PublicKey|string} address - Optional address to check (defaults to wallet's public key)
-     * @returns {Object} Token balances
+     * @returns {Object} Token balances in format { tokens: [...] }
      */
     if (!address) throw new Error('Address required');
 
@@ -40,7 +40,34 @@ class JupiterService {
       const response = await limiter.schedule(() =>
         axios.get(`${JUPITER_API}/ultra/v1/balances/${address.toString()}`)
       );
-      return response.data || { tokens: [] };
+
+      // Transform the response into the expected format
+      const balanceData = response.data || {};
+
+      // Create a tokens array from the response
+      const tokens = [];
+
+      // Known token symbols to mint addresses mapping
+      const knownMints = {
+        'SOL': SOL_MINT,
+        // Add other known tokens here if needed
+      };
+
+      // Process each token in the response
+      for (const [symbol, data] of Object.entries(balanceData)) {
+        if (data && typeof data === 'object') {
+          tokens.push({
+            symbol: symbol,
+            mint: knownMints[symbol] || symbol, // Use known mint or symbol as fallback
+            uiAmount: data.uiAmount || 0,
+            amount: data.amount || '0',
+            slot: data.slot,
+            isFrozen: data.isFrozen || false
+          });
+        }
+      }
+
+      return { tokens };
     } catch (error) {
       console.error(`Failed to get balances: ${error.message}`);
       // Return a default structure to prevent undefined errors
