@@ -15,7 +15,7 @@ const { initializeBlacklist } = require('./blacklist');
 
 // Display welcome banner
 logger.displayBanner('A.C.E', 'blue');
-logger.displayBox('Algorithmic Coin Engine', 'Welcome', 'info');
+logger.displayBox('Augmented Coin Engine', 'Welcome', 'info');
 
 // Global state
 let isRunning = false;

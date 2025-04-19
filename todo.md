@@ -38,7 +38,7 @@
 - [x] Add trending token identification
 - [x] Create pair data fetching
 - [x] Implement transaction pattern analysis
-- [x] Add honeypot detection system
+- [ ] Add honeypot detection system
 - [x] Implement market cap trend analysis
 
 ### GeckoTerminal API Integration ✅
@@ -159,7 +159,7 @@
 
 ### Performance Metrics ✅
 - [x] Implement trade execution logging
-- [x] Add performance metrics calculation
+- [ ] Add performance metrics calculation
 - [x] Create error tracking system
 - [x] Implement position monitoring logging
 - [x] Add wallet status reporting

@@ -148,7 +148,7 @@ A.C.E. leverages Jupiter's Ultra API for fast, efficient, and MEV-protected trad
   - Implementation: Jupiter's Ultra API includes built-in MEV protection
   - Benefit: Better execution prices and protection against sandwich attacks
 
-- **Performance Optimization**: The Ultra API provides significant performance improvements.
+- **Performance Optimization**: The Ultra API provides significant performance improvements compared to the Swap API.
   - Execution speed: 95% of swaps execute in under 2 seconds
   - Reliability: Higher success rate for transactions
   - Implementation: Rate limiting with Bottleneck library to prevent API throttling
@@ -159,8 +159,7 @@ A.C.E. implements sophisticated order types to maximize profit and minimize risk
 
 - **Market Orders**: Immediate execution at the best available price.
   - Implementation: Uses Jupiter Ultra API for market orders
-  - Slippage control: Configurable slippage tolerance (default 5%)
-  - Size management: Fixed buy size of 0.08 SOL per position
+  - Size management: Fixed buy size of 0.08 SOL per position (configurable)
 
 - **Dynamic Trailing Stops**: Automatically adjusting stop-loss orders that follow the price upward.
   - ATR-based mechanism: Stop distance based on market volatility
