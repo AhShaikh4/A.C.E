@@ -26,7 +26,6 @@ class JupiterService {
     this.userPublicKey = wallet ? wallet.publicKey : null;
   }
 
-  // --- Utility Methods have been removed as they're not needed for Ultra API ---
 
   // --- Ultra API ---
   async getBalances(address = this.userPublicKey) {
