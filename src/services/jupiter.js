@@ -40,7 +40,7 @@ class JupiterService {
       const response = await limiter.schedule(() =>
         axios.get(`${JUPITER_API}/ultra/v1/balances/${address.toString()}`)
       );
-      return response.data;
+      return response.data || { tokens: [] };
     } catch (error) {
       console.error(`Failed to get balances: ${error.message}`);
       // Return a default structure to prevent undefined errors

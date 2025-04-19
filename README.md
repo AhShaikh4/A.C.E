@@ -1,6 +1,6 @@
 # A.C.E. (Augmented Coin Engine)
 
-![A.C.E. Logo](https://via.placeholder.com/150x150.png?text=A.C.E.)
+![A.C.E. Logo](logo.png)
 
 ## Overview
 

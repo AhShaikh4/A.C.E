@@ -445,43 +445,6 @@ async function executeBuy(token, jupiterService, connection) {
       }
     }
 
-    /* Dynamic buy amount adjustment (commented out as requested)
-    // Check wallet SOL balance and adjust buy amount if needed
-    let buyAmountSOL = BUY_AMOUNT_SOL;
-    let buyAmountLamports;
-
-    try {
-      // Get current SOL balance
-      const solBalance = await connection.getBalance(jupiterService.wallet.publicKey);
-      const solBalanceSOL = solBalance / 1000000000; // Convert lamports to SOL
-      console.log(`Current wallet SOL balance: ${solBalanceSOL} SOL`);
-
-      // Calculate available SOL (keeping reserve for fees)
-      const availableSOL = solBalanceSOL - MINIMUM_SOL_RESERVE;
-
-      if (availableSOL <= 0) {
-        throw new Error(`Insufficient SOL balance for trading. Current: ${solBalanceSOL} SOL, Minimum required: ${MINIMUM_SOL_RESERVE} SOL`);
-      }
-
-      // Adjust buy amount if wallet has less than configured amount
-      if (availableSOL < BUY_AMOUNT_SOL) {
-        buyAmountSOL = availableSOL * 0.95; // Use 95% of available SOL to leave room for fees
-        console.log(`Adjusting buy amount to ${buyAmountSOL} SOL based on available balance`);
-      }
-
-      // Convert to lamports
-      buyAmountLamports = Math.floor(buyAmountSOL * 1000000000);
-
-      if (buyAmountLamports < 1000000) { // Minimum 0.001 SOL
-        throw new Error(`Buy amount too small: ${buyAmountSOL} SOL. Minimum required: 0.001 SOL`);
-      }
-
-      console.log(`Executing swap with ${buyAmountSOL} SOL (${buyAmountLamports} lamports)`);
-    } catch (error) {
-      console.error(`Failed to check wallet balance: ${error.message}`);
-      return null;
-    }
-    */
 
     // Using fixed buy amount as requested
     logger.info(`Executing swap with fixed amount: ${BUY_AMOUNT_SOL} SOL (${BUY_AMOUNT_LAMPORTS} lamports)`);
