@@ -6,6 +6,8 @@
 
 A.C.E. is a sophisticated trading bot designed for automated analysis and trading of Solana memecoins. The system leverages multiple data sources, advanced technical analysis, and optimized execution strategies to identify and capitalize on trading opportunities in the fast-paced Solana memecoin market.
 
+PS: Augment AI was used to create this bot. 
+
 ## Key Features
 
 - **Advanced Token Discovery** - Multi-source identification and sophisticated filtering
