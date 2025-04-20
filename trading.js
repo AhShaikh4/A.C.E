@@ -714,6 +714,24 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         logger.debug(`Using position amount as last resort: ${fullTokenAmount} ${position.symbol}`);
         logger.debug(`Selling ${sellPercentage}% of position: ${tokenAmount} ${position.symbol}`);
       } else {
+        // IMPROVEMENT #3: Check if we actually have any tokens before throwing an error
+        try {
+          const connection = jupiterService.connection;
+          const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+            jupiterService.wallet.publicKey,
+            { mint: new PublicKey(position.tokenAddress) }
+          );
+
+          // If we have no tokens or a very small amount, consider the position already sold
+          if (tokenAccount.value.length === 0 ||
+              (tokenAccount.value.length > 0 && parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount) < 0.000001)) {
+            logger.info(`No tokens found for ${position.symbol}, considering position already sold`);
+            return true; // Return success since there's nothing to sell
+          }
+        } catch (error) {
+          logger.warn(`Failed to check token existence: ${error.message}`);
+        }
+
         throw new Error(`No valid token amount available for selling`);
       }
     }
@@ -732,7 +750,39 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
         positions.delete(position.tokenAddress);
         return true; // Consider the sell "successful" if there are no tokens to sell
       }
-      throw new Error(`Invalid token amount: ${tokenAmount}`);
+
+      // IMPROVEMENT #4: Double-check wallet balance directly before giving up
+      try {
+        const connection = jupiterService.connection;
+        const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+          jupiterService.wallet.publicKey,
+          { mint: new PublicKey(position.tokenAddress) }
+        );
+
+        if (tokenAccount.value.length > 0) {
+          const actualBalance = parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+          if (actualBalance > 0) {
+            // We found tokens! Use this amount instead
+            fullTokenAmount = actualBalance;
+            tokenAmount = fullTokenAmount * (sellPercentage / 100);
+            logger.info(`Found ${actualBalance} ${position.symbol} tokens in wallet during final check`);
+            logger.info(`Will sell ${tokenAmount} ${position.symbol} (${sellPercentage}% of position)`);
+          } else {
+            // No tokens found, remove position
+            logger.info(`No tokens found in wallet for ${position.symbol}, removing from tracking`);
+            positions.delete(position.tokenAddress);
+            return true;
+          }
+        } else {
+          // No token account found, remove position
+          logger.info(`No token account found for ${position.symbol}, removing from tracking`);
+          positions.delete(position.tokenAddress);
+          return true;
+        }
+      } catch (error) {
+        logger.warn(`Failed during final wallet balance check: ${error.message}`);
+        throw new Error(`Invalid token amount: ${tokenAmount}`);
+      }
     }
 
     // Execute swap from token to SOL with detailed error handling
@@ -805,6 +855,36 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
       logger.debug(`Waiting ${waitTime/1000} seconds for balances to update...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
 
+      // IMPROVEMENT #5: Verify the transaction actually reduced our token balance
+      try {
+        const connection = jupiterService.connection;
+        const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+          jupiterService.wallet.publicKey,
+          { mint: new PublicKey(position.tokenAddress) }
+        );
+
+        if (tokenAccount.value.length > 0) {
+          const postSellBalance = parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+          const expectedRemainingBalance = fullTokenAmount - tokenAmount;
+
+          logger.info(`Post-sell balance check: ${postSellBalance} ${position.symbol} (expected ~${expectedRemainingBalance})`);
+
+          // If we sold everything but still have tokens, something went wrong
+          if (sellPercentage >= 100 && postSellBalance > 0.001) {
+            logger.warn(`Transaction may have failed - still have ${postSellBalance} ${position.symbol} after 100% sell`);
+            // Don't return false here - we'll still log the trade and let the monitoring cycle try again
+          }
+
+          // If we did a partial sell but balance didn't change much, something went wrong
+          if (sellPercentage < 100 && Math.abs(postSellBalance - fullTokenAmount) < 0.001) {
+            logger.warn(`Transaction may have failed - balance didn't change after partial sell`);
+            // Don't return false here - we'll still log the trade and let the monitoring cycle try again
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to verify post-sell balance: ${error.message}`);
+      }
+
       // Log the trade with transaction signature
       await logTrade({
         action: 'SELL',
@@ -820,6 +900,26 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
       if (sellPercentage >= 100) {
         logger.info(`Sell transaction successful, removing ${position.symbol} from position tracking`);
         positions.delete(position.tokenAddress);
+      } else {
+        // IMPROVEMENT #6: Update position amount after partial sell
+        try {
+          const connection = jupiterService.connection;
+          const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+            jupiterService.wallet.publicKey,
+            { mint: new PublicKey(position.tokenAddress) }
+          );
+
+          if (tokenAccount.value.length > 0) {
+            const remainingBalance = parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+            if (remainingBalance > 0) {
+              // Update the position with the actual remaining amount
+              position.amount = remainingBalance;
+              logger.info(`Updated position amount to ${remainingBalance} ${position.symbol} after partial sell`);
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to update position amount after partial sell: ${error.message}`);
+        }
       }
     } catch (swapError) {
       // Try with a smaller amount if the full amount fails
@@ -865,6 +965,26 @@ async function executeSell(position, currentData, jupiterService, reason, sellPe
           if (sellPercentage >= 100) {
             logger.info(`Retry sell transaction successful, removing ${position.symbol} from position tracking`);
             positions.delete(position.tokenAddress);
+          } else {
+            // IMPROVEMENT #6: Update position amount after partial sell (retry case)
+            try {
+              const connection = jupiterService.connection;
+              const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+                jupiterService.wallet.publicKey,
+                { mint: new PublicKey(position.tokenAddress) }
+              );
+
+              if (tokenAccount.value.length > 0) {
+                const remainingBalance = parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+                if (remainingBalance > 0) {
+                  // Update the position with the actual remaining amount
+                  position.amount = remainingBalance;
+                  logger.info(`Updated position amount to ${remainingBalance} ${position.symbol} after partial retry sell`);
+                }
+              }
+            } catch (error) {
+              logger.warn(`Failed to update position amount after partial retry sell: ${error.message}`);
+            }
           }
         } catch (retryError) {
           throw new Error(`Failed to sell with reduced amount: ${retryError.message}. Original error: ${swapError.message}`);
@@ -984,6 +1104,53 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
 }
 
 /**
+ * Reconcile positions with actual wallet balances
+ * @param {JupiterService} jupiterService - Jupiter service instance
+ */
+async function reconcilePositions(jupiterService) {
+  logger.debug('Reconciling positions with actual wallet balances...');
+
+  // Create a copy of the positions to iterate over
+  const positionEntries = Array.from(positions.entries());
+
+  for (const [tokenAddress, position] of positionEntries) {
+    try {
+      // Check if we actually have this token in our wallet
+      const connection = jupiterService.connection;
+      const tokenAccount = await connection.getParsedTokenAccountsByOwner(
+        jupiterService.wallet.publicKey,
+        { mint: new PublicKey(tokenAddress) }
+      );
+
+      if (tokenAccount.value.length === 0) {
+        // We don't have this token in our wallet at all
+        logger.warn(`Reconciliation: No token account found for ${position.symbol}, removing from tracking`);
+        positions.delete(tokenAddress);
+        continue;
+      }
+
+      // We have the token, check the balance
+      const actualBalance = parseFloat(tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount);
+
+      if (actualBalance <= 0.000001) {
+        // Balance is effectively zero
+        logger.warn(`Reconciliation: Zero balance for ${position.symbol}, removing from tracking`);
+        positions.delete(tokenAddress);
+        continue;
+      }
+
+      // Update the position amount if it differs significantly from what we have tracked
+      if (Math.abs(actualBalance - position.amount) > 0.01 * position.amount) {
+        logger.warn(`Reconciliation: Updating ${position.symbol} amount from ${position.amount} to ${actualBalance}`);
+        position.amount = actualBalance;
+      }
+    } catch (error) {
+      logger.warn(`Failed to reconcile position for ${position.symbol}: ${error.message}`);
+    }
+  }
+}
+
+/**
  * Monitor and manage open positions
  * @param {JupiterService} jupiterService - Jupiter service instance
  * @param {DexScreenerService} dexService - DexScreener service instance
@@ -991,6 +1158,9 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
  */
 async function monitorPositions(jupiterService, dexService) {
   logger.debug(`Monitoring ${positions.size} open positions...`);
+
+  // IMPROVEMENT #7: Reconcile positions with actual wallet balances
+  await reconcilePositions(jupiterService);
 
   // If no positions, clear the interval
   if (positions.size === 0 && monitoringInterval) {
