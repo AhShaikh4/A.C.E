@@ -20,6 +20,7 @@ logger.displayBox('Augmented Coin Engine', 'Welcome', 'info');
 // Global state
 let isRunning = false;
 let analysisInterval = null;
+let currentServices = null; // Store services globally for status reporting
 const ANALYSIS_INTERVAL = BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES * 60 * 1000; // Convert minutes to milliseconds
 
 /**
@@ -254,6 +255,7 @@ async function startBot() {
     // Initialize all services
     logger.infoUser('Initializing A.C.E services...');
     const services = await initialize();
+    currentServices = services; // Store services globally
     isRunning = true;
 
     // Create log directory if it doesn't exist
@@ -261,9 +263,10 @@ async function startBot() {
     await fs.mkdir(logDir, { recursive: true }).catch(() => {});
 
     // Display bot configuration in a box
+    const isTradingEnabled = services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED;
     const configMessage = [
       `Network: ${chalk.cyan(BOT_CONFIG.NETWORK)}`,
-      `Trading Enabled: ${BOT_CONFIG.TRADING_ENABLED ? chalk.green('YES') : chalk.red('NO')}`,
+      `Trading Enabled: ${isTradingEnabled ? chalk.green('YES') : chalk.red('NO')}`,
       `Analysis Interval: ${chalk.cyan(BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES + ' minutes')}`,
       `Max Positions: ${chalk.cyan(BOT_CONFIG.MAX_POSITIONS.toString())}`,
       `Buy Amount: ${chalk.cyan(BOT_CONFIG.BUY_AMOUNT_SOL + ' SOL')}`
@@ -356,6 +359,7 @@ async function stopBot() {
   }
 
   isRunning = false;
+  currentServices = null; // Clear services reference
 
   // Display goodbye message
   logger.displayBox('Thank you for using A.C.E!', 'Goodbye', 'info');
@@ -387,15 +391,20 @@ async function main() {
  * @returns {Object} - Bot status information
  */
 function getBotStatus() {
+  // Get the current mode if the bot is running
+  const currentMode = isRunning && currentServices ? currentServices.mode : null;
+  const isTradingEnabled = currentMode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED;
+
   return {
     isRunning,
     uptime: isRunning ? Date.now() - startTime : 0,
-    positions: getCurrentPositions(),
+    positions: trading.getCurrentPositions(),
     config: {
       network: BOT_CONFIG.NETWORK,
-      tradingEnabled: BOT_CONFIG.TRADING_ENABLED,
+      tradingEnabled: isTradingEnabled,
       analysisInterval: BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES,
-      maxPositions: BOT_CONFIG.MAX_POSITIONS
+      maxPositions: BOT_CONFIG.MAX_POSITIONS,
+      mode: currentMode || 'not_running'
     }
   };
 }
