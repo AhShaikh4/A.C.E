@@ -9,7 +9,7 @@ const BOT_CONFIG = {
 
   // Trading settings
   TRADING_ENABLED: true, // Master switch for trading
-  MAX_POSITIONS: 3, // Maximum number of concurrent positions
+  MAX_POSITIONS: 1, // Maximum number of concurrent positions
   POSITION_CHECK_INTERVAL_SECONDS: 7, // How often to check positions (in seconds)
 
   // Token filtering settings
