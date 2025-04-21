@@ -1,22 +1,23 @@
 {
-  "name": "pm",
+  "name": "ace",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "simulate": "node simulation/simulator.js"
+    "simulate": "node simulation/simulator.js",
+    "start": "node main.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Codester-in-the-making/PM.git"
+    "url": "git+https://github.com/AhShaikh4/A.C.E.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["solana", "trading", "bot", "memecoin"],
+  "author": "Ahmed Shaikh",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Codester-in-the-making/PM/issues"
+    "url": "https://github.com/AhShaikh4/A.C.E/issues"
   },
-  "homepage": "https://github.com/Codester-in-the-making/PM#readme",
+  "homepage": "https://github.com/AhShaikh4/A.C.E#readme",
   "description": "",
   "dependencies": {
     "@solana/wallet-adapter-base": "^0.9.24",
