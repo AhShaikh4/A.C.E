@@ -3,11 +3,12 @@
 require('dotenv').config();
 const { Connection, PublicKey, Keypair, clusterApiUrl } = require('@solana/web3.js');
 const bs58 = require('bs58');
+const { BOT_CONFIG } = require('./config');
 const { selectMode, MODES } = require('./mode');
 const logger = require('./logger');
 
 // Constants
-const MINIMUM_SOL_BALANCE = 0.001; // Minimum SOL needed for transactions
+const MINIMUM_SOL_BALANCE = BOT_CONFIG.MINIMUM_SOL_BALANCE ?? 0.001; // Minimum SOL needed for transactions
 const NETWORKS = ['mainnet-beta', 'devnet', 'testnet'];
 const DEFAULT_NETWORK = 'mainnet-beta';
 
@@ -54,7 +55,11 @@ function initializeWallet() {
         }
 
         // Decode base58 private key
-        const privateKey = bs58.default.decode(process.env.PRIVATE_KEY);
+        const decodeBase58 = bs58.decode || (bs58.default && bs58.default.decode);
+        if (!decodeBase58) {
+            throw new Error('Base58 decoder not available. Check bs58 installation.');
+        }
+        const privateKey = decodeBase58(process.env.PRIVATE_KEY);
 
         // Validate private key length
         if (privateKey.length !== 64) {
@@ -134,12 +139,10 @@ async function checkWalletBalance(wallet) {
  * @param {number} balance Current wallet balance
  * @returns {Promise<string>} Selected mode
  */
-async function initializeMode(balance) {
-    // Get the buy amount from config
-    const { BOT_CONFIG } = require('./config');
+async function initializeMode(balance, options = {}) {
     const buyAmount = BOT_CONFIG.BUY_AMOUNT_SOL;
 
-    return await selectMode(balance, MINIMUM_SOL_BALANCE, buyAmount);
+    return await selectMode(balance, MINIMUM_SOL_BALANCE, buyAmount, options);
 }
 
 async function main() {

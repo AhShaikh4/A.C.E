@@ -44,7 +44,7 @@ For a detailed breakdown of all features, see [features.md](features.md).
    ```
 
 3. Set up environment variables:
-   - Create a .env file locally and add the necessary variables. See [env-variables.md](env-variables.md) for a detailed guide. Also never
+   - Create a .env file locally and add the necessary variables. See [env-variables.md](env-variables.md) for a detailed guide. Also never commit it.
 
 **Important:** Never share your private keys or `.env` file.
 
@@ -80,6 +80,17 @@ node simulation-runner.js
 ```
 
 For more information on simulation capabilities, see [simulation/README.md](simulation/README.md).
+
+#### Paper Trading Mode
+
+Paper trading uses real market data but simulated funds. Enable it in `config.js`:
+
+```js
+PAPER_TRADING_ENABLED: true,
+PAPER_START_USD: 50
+```
+
+When enabled, you can select "Paper Trading Mode" on startup.
 
 ## Project Structure
 

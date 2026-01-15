@@ -15,6 +15,7 @@ const { isBlacklisted } = require('./blacklist');
 
 // Import config
 const { BOT_CONFIG } = require('./config');
+const { MODES } = require('./mode');
 
 // Import logger
 const logger = require('./logger');
@@ -24,12 +25,31 @@ const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mi
 const BUY_AMOUNT_SOL = BOT_CONFIG.BUY_AMOUNT_SOL; // Fixed buy amount in SOL
 const BUY_AMOUNT_LAMPORTS = BUY_AMOUNT_SOL * 1000000000; // Convert SOL to lamports
 const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS || 1; // Maximum number of concurrent positions
-const PRICE_CHECK_INTERVAL = 7000; // 30 seconds
+const PRICE_CHECK_INTERVAL = (BOT_CONFIG.POSITION_CHECK_INTERVAL_SECONDS || 7) * 1000; // ms between checks
 const SLIPPAGE_BPS = BOT_CONFIG.SLIPPAGE_BPS || 500; // Slippage tolerance
 // const MINIMUM_SOL_RESERVE = 0.001; // Minimum SOL to keep in wallet for transaction fees (not used)
+const SOL_PRICE_FALLBACK_USD = 150; // Fallback SOL price for estimates
+const SOL_PRICE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const solPriceCache = { value: null, timestamp: 0 };
 
 // Position tracking
 const positions = new Map();
+
+// Paper trading state
+const paperState = {
+  usdBalance: BOT_CONFIG.PAPER_START_USD ?? 50,
+  tokenBalances: new Map()
+};
+
+function getPaperState() {
+  return {
+    usdBalance: paperState.usdBalance,
+    tokenBalances: Array.from(paperState.tokenBalances.entries()).map(([mint, amount]) => ({
+      mint,
+      amount
+    }))
+  };
+}
 
 // Monitoring interval reference for cleanup
 let monitoringInterval = null;
@@ -37,6 +57,39 @@ let monitoringInterval = null;
 // Cache for OHLCV data to reduce API calls
 const ohlcvCache = new Map();
 const CACHE_TTL = 60000; // 1 minute cache TTL
+
+function estimateTokenAmountFromUsd(solAmount, tokenPriceUsd, solPriceUsd) {
+  if (!tokenPriceUsd || tokenPriceUsd <= 0) {
+    return 0;
+  }
+  const effectiveSolPrice = solPriceUsd || SOL_PRICE_FALLBACK_USD;
+  const usdValue = solAmount * effectiveSolPrice;
+  return usdValue / tokenPriceUsd;
+}
+
+async function getSolPriceUsd(jupiterService) {
+  const now = Date.now();
+  if (solPriceCache.value && (now - solPriceCache.timestamp) < SOL_PRICE_CACHE_TTL) {
+    return solPriceCache.value;
+  }
+
+  try {
+    const priceResponse = await jupiterService.getPrice(SOL_MINT);
+    const data = priceResponse?.data || priceResponse?.prices || priceResponse || {};
+    const entry = data[SOL_MINT] || data.SOL;
+    const price = typeof entry === 'number' ? entry : entry?.price;
+
+    if (price && Number.isFinite(price)) {
+      solPriceCache.value = price;
+      solPriceCache.timestamp = now;
+      return price;
+    }
+  } catch (error) {
+    logger.warn(`Failed to fetch SOL price from Jupiter: ${error.message}`);
+  }
+
+  return SOL_PRICE_FALLBACK_USD;
+}
 
 /**
  * Check if a token meets the buy criteria
@@ -388,6 +441,109 @@ async function logTrade(tradeDetails) {
   logger.info(`Trade logged: ${tradeDetails.action} ${tradeDetails.symbol}`);
 }
 
+async function executePaperBuy(token, jupiterService) {
+  try {
+    logger.info(`Paper buy: ${token.symbol} (${token.tokenAddress})`);
+
+    if (isBlacklisted(token.tokenAddress)) {
+      logger.warn(`Paper buy aborted for blacklisted token: ${token.symbol} (${token.tokenAddress})`);
+      return null;
+    }
+
+    if (!token.priceUsd || token.priceUsd <= 0) {
+      throw new Error(`Invalid token price: ${token.priceUsd}`);
+    }
+
+    const solPriceUsd = await getSolPriceUsd(jupiterService);
+    const requiredUsd = BUY_AMOUNT_SOL * solPriceUsd;
+    if (paperState.usdBalance < requiredUsd) {
+      logger.warn(`Paper balance insufficient: $${paperState.usdBalance.toFixed(2)} < $${requiredUsd.toFixed(2)}`);
+      return null;
+    }
+
+    const slippageFactor = 1 - (SLIPPAGE_BPS / 10000);
+    const tokenAmount = (requiredUsd * slippageFactor) / token.priceUsd;
+
+    paperState.usdBalance -= requiredUsd;
+    paperState.tokenBalances.set(
+      token.tokenAddress,
+      (paperState.tokenBalances.get(token.tokenAddress) || 0) + tokenAmount
+    );
+
+    const position = {
+      tokenAddress: token.tokenAddress,
+      symbol: token.symbol,
+      entryPrice: token.priceUsd,
+      entryTime: Date.now(),
+      highestPrice: token.priceUsd,
+      amount: tokenAmount,
+      poolAddress: token.poolAddress,
+      txSignature: 'PAPER_BUY'
+    };
+
+    await logTrade({
+      action: 'BUY',
+      symbol: token.symbol,
+      price: token.priceUsd,
+      amount: position.amount,
+      txSignature: position.txSignature,
+      reason: `Paper buy | Score: ${token.score.toFixed(2)}/100`
+    });
+
+    logger.logUser(`Paper bought ${token.symbol} for $${requiredUsd.toFixed(2)} | balance: $${paperState.usdBalance.toFixed(2)}`);
+    return position;
+  } catch (error) {
+    logger.error(`Paper buy failed for ${token.symbol}: ${error.message}`);
+    return null;
+  }
+}
+
+async function executePaperSell(position, currentData, reason, sellPercentage = 100) {
+  try {
+    logger.info(`Paper sell: ${position.symbol} (${position.tokenAddress}): ${reason}`);
+
+    const currentPrice = currentData.priceUsd;
+    if (!currentPrice || currentPrice <= 0) {
+      throw new Error(`Invalid current price: ${currentPrice}`);
+    }
+
+    const balance = paperState.tokenBalances.get(position.tokenAddress) || 0;
+    if (balance <= 0) {
+      positions.delete(position.tokenAddress);
+      return true;
+    }
+
+    const sellAmount = balance * (sellPercentage / 100);
+    const slippageFactor = 1 - (SLIPPAGE_BPS / 10000);
+    const proceedsUsd = sellAmount * currentPrice * slippageFactor;
+
+    paperState.usdBalance += proceedsUsd;
+    const remaining = balance - sellAmount;
+    if (remaining > 0) {
+      paperState.tokenBalances.set(position.tokenAddress, remaining);
+      position.amount = remaining;
+    } else {
+      paperState.tokenBalances.delete(position.tokenAddress);
+    }
+
+    await logTrade({
+      action: 'SELL',
+      symbol: position.symbol,
+      price: currentPrice,
+      amount: sellAmount,
+      profitLoss: ((currentPrice - position.entryPrice) / position.entryPrice) * 100,
+      txSignature: 'PAPER_SELL',
+      reason
+    });
+
+    logger.logUser(`Paper sold ${position.symbol} for $${proceedsUsd.toFixed(2)} | balance: $${paperState.usdBalance.toFixed(2)}`);
+    return true;
+  } catch (error) {
+    logger.error(`Paper sell failed for ${position.symbol}: ${error.message}`);
+    return false;
+  }
+}
+
 // Use the getESTTimestamp function from logger.js instead of duplicating it here
 
 /**
@@ -409,6 +565,10 @@ async function executeBuy(token, jupiterService, connection) {
 
     // Get pre-swap balance to compare later
     let preSwapBalance = 0;
+    const getEstimatedAmount = async () => {
+      const solPriceUsd = await getSolPriceUsd(jupiterService);
+      return estimateTokenAmountFromUsd(BUY_AMOUNT_SOL, token.priceUsd, solPriceUsd);
+    };
 
     // Try to get balance directly from wallet first (most reliable)
     try {
@@ -566,7 +726,8 @@ async function executeBuy(token, jupiterService, connection) {
           logger.warn(`No token account found for ${token.symbol}, falling back to estimate`);
           console.log(`[DIRECT WALLET] No token account found for ${token.symbol}, falling back to estimate`);
           // Use a more conservative estimate
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          const estimatedAmount = await getEstimatedAmount();
+          actualAmount = (estimatedAmount * 0.95) / 1.05; // Account for slippage and fees
         }
       }
     } catch (error) {
@@ -589,14 +750,16 @@ async function executeBuy(token, jupiterService, connection) {
         } else {
           // Last resort fallback
           console.log(`[DIRECT WALLET] No token account found for ${token.symbol}, using estimate`);
-          actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+          const estimatedAmount = await getEstimatedAmount();
+          actualAmount = (estimatedAmount * 0.95) / 1.05; // Account for slippage and fees
         }
       } catch (secondError) {
         logger.warn(`Failed to get direct wallet balance: ${secondError.message}`);
         console.log(`[DIRECT WALLET] Failed to get balance: ${secondError.message}`);
         // Last resort fallback
         console.log(`[BALANCE] All balance checks failed, using estimate`);
-        actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05); // Account for slippage and fees
+        const estimatedAmount = await getEstimatedAmount();
+        actualAmount = (estimatedAmount * 0.95) / 1.05; // Account for slippage and fees
       }
     }
 
@@ -604,7 +767,8 @@ async function executeBuy(token, jupiterService, connection) {
     if (actualAmount > 1000000000) {
       logger.warn(`Amount suspiciously large (${actualAmount}), capping to reasonable value`);
       // Cap to a reasonable value based on the transaction amount
-      actualAmount = (BUY_AMOUNT_LAMPORTS * 0.95) / (token.priceUsd * 1.05);
+      const estimatedAmount = await getEstimatedAmount();
+      actualAmount = (estimatedAmount * 0.95) / 1.05;
     }
 
     logger.debug(`Final amount used for position: ${actualAmount}`);
@@ -1073,13 +1237,16 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
     const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    let historicalHolders;
-    try {
-      historicalHolders = await getTokenHoldersHistorical(tokenAddress, fromDate, toDate);
-      logger.debug(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
-    } catch (error) {
-      logger.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
-      historicalHolders = { result: [] };
+    let historicalHolders = { result: [] };
+    if (BOT_CONFIG.MORALIS_ENABLED) {
+      try {
+        historicalHolders = await getTokenHoldersHistorical(tokenAddress, fromDate, toDate);
+        logger.debug(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
+      } catch (error) {
+        logger.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
+      }
+    } else {
+      logger.debug(`Moralis disabled, skipping holder history for ${symbol}`);
     }
 
     // Calculate holder change percentage
@@ -1156,11 +1323,14 @@ async function reconcilePositions(jupiterService) {
  * @param {DexScreenerService} dexService - DexScreener service instance
  * @param {Connection} connection - Solana connection
  */
-async function monitorPositions(jupiterService, dexService) {
+async function monitorPositions(jupiterService, dexService, options = {}) {
+  const isPaperTrading = options.isPaperTrading || false;
   logger.debug(`Monitoring ${positions.size} open positions...`);
 
-  // IMPROVEMENT #7: Reconcile positions with actual wallet balances
-  await reconcilePositions(jupiterService);
+  // Reconcile real wallet balances only in live mode
+  if (!isPaperTrading) {
+    await reconcilePositions(jupiterService);
+  }
 
   // If no positions, clear the interval
   if (positions.size === 0 && monitoringInterval) {
@@ -1265,13 +1435,15 @@ async function monitorPositions(jupiterService, dexService) {
         const sellPercentage = sellDecision.sellPercentage || 100;
 
         // Execute the sell with the specified percentage
-        const sellSuccess = await executeSell(
-          updatedPosition,
-          currentData,
-          jupiterService,
-          sellDecision.reason,
-          sellPercentage
-        );
+        const sellSuccess = isPaperTrading
+          ? await executePaperSell(updatedPosition, currentData, sellDecision.reason, sellPercentage)
+          : await executeSell(
+              updatedPosition,
+              currentData,
+              jupiterService,
+              sellDecision.reason,
+              sellPercentage
+            );
 
         if (sellSuccess) {
           // If we're selling the entire position or this is a stop loss/emergency exit
@@ -1312,7 +1484,8 @@ async function monitorPositions(jupiterService, dexService) {
  * @param {DexScreenerService} dexService - DexScreener service instance
  * @param {Connection} connection - Solana connection
  */
-async function processTokens(finalTokens, jupiterService) {
+async function processTokens(finalTokens, jupiterService, options = {}) {
+  const isPaperTrading = options.isPaperTrading || false;
   logger.info(`Processing ${finalTokens.length} tokens for potential trades...`);
 
   // Skip if we already have any positions
@@ -1341,7 +1514,9 @@ async function processTokens(finalTokens, jupiterService) {
       logger.info(`Buy criteria met for ${token.symbol} (Score: ${token.score.toFixed(2)}/100)`);
 
       // Execute buy with connection for token balance checking
-      const position = await executeBuy(token, jupiterService, jupiterService.connection);
+      const position = isPaperTrading
+        ? await executePaperBuy(token, jupiterService)
+        : await executeBuy(token, jupiterService, jupiterService.connection);
       if (position) {
         // Add to positions
         positions.set(token.tokenAddress, position);
@@ -1376,14 +1551,18 @@ async function executeTradingStrategy(finalTokens, services = {}) {
   try {
     logger.info('Initializing trading strategy...');
 
+    const isPaperTrading = services.mode === MODES.PAPER;
+
     // Use provided services or initialize new ones
     const connection = services.connection || initializeConnection();
-    const wallet = services.wallet || initializeWallet();
-    const walletInfo = services.walletInfo || await checkWalletBalance(wallet);
+    const wallet = isPaperTrading ? null : (services.wallet || initializeWallet());
+    const walletInfo = isPaperTrading
+      ? { hasMinimumBalance: true, balance: Number.MAX_SAFE_INTEGER }
+      : (services.walletInfo || await checkWalletBalance(wallet));
     const dexService = services.dexService || new DexScreenerService();
 
     // Check if wallet has sufficient balance
-    if (!walletInfo.hasMinimumBalance) {
+    if (!isPaperTrading && !walletInfo.hasMinimumBalance) {
       logger.error('Insufficient wallet balance for trading.');
       return { success: false, reason: 'insufficient_balance' };
     }
@@ -1392,7 +1571,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
     const jupiterService = new JupiterService(connection, wallet);
 
     // Process tokens for potential trades
-    await processTokens(finalTokens, jupiterService);
+    await processTokens(finalTokens, jupiterService, { isPaperTrading });
 
     // Set up position monitoring only if we have positions
     if (positions.size > 0) {
@@ -1405,7 +1584,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
 
       // Set up new monitoring interval
       monitoringInterval = setInterval(
-        () => monitorPositions(jupiterService, dexService),
+        () => monitorPositions(jupiterService, dexService, { isPaperTrading }),
         PRICE_CHECK_INTERVAL
       );
 
@@ -1418,6 +1597,7 @@ async function executeTradingStrategy(finalTokens, services = {}) {
     return {
       success: true,
       positionsOpened: positions.size,
+      paperBalanceUsd: isPaperTrading ? paperState.usdBalance : undefined,
       positions: Array.from(positions.entries()).map(([_, pos]) => ({
         symbol: pos.symbol,
         entryPrice: pos.entryPrice,
@@ -1501,6 +1681,7 @@ module.exports = {
   getCurrentPositions,
   hasOpenPositions,
   getOpenPositionsCount,
+  getPaperState,
   // Export these for testing/simulation
   meetsBuyCriteria,
   meetsSellCriteria

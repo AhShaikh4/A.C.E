@@ -226,13 +226,14 @@ function logAnalyzed(data) {
  */
 function logTrade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
+  const hasProfitLoss = profitLoss !== undefined && profitLoss !== null;
 
   // Calculate PNL in USD and SOL if we have the necessary data
   let pnlUsd = 'N/A';
   let pnlSol = 'N/A';
   let pnlUsdValue = 0;
 
-  if (action === 'SELL' && profitLoss !== undefined) {
+  if (action === 'SELL' && hasProfitLoss) {
     // Calculate the entry value (what we paid)
     const entryValue = amount * (price / (1 + profitLoss / 100));
 
@@ -258,7 +259,7 @@ function logTrade(tradeDetails) {
   const logEntry = `[${getESTTimestamp()}] ${action.toUpperCase()} ${symbol}\n` +
                   `  Price: $${price}\n` +
                   `  Amount: ${amount}\n` +
-                  `  Profit/Loss: ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})\n` +
+                  `  Profit/Loss: ${hasProfitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})\n` +
                   `  Reason: ${reason || 'N/A'}\n` +
                   `  Transaction: ${txSignature || 'N/A'}\n\n`;
 
@@ -597,6 +598,7 @@ function error(message, error) {
  */
 function trade(tradeDetails) {
   const { action, symbol, price, amount, profitLoss, txSignature, reason } = tradeDetails;
+  const hasProfitLoss = profitLoss !== undefined && profitLoss !== null;
 
   // Calculate PNL in USD and SOL if we have the necessary data
   let pnlUsd = 'N/A';
@@ -604,7 +606,7 @@ function trade(tradeDetails) {
   let pnlUsdValue = 0;
   let pnlSolValue = 0;
 
-  if (action === 'SELL' && profitLoss !== undefined) {
+  if (action === 'SELL' && hasProfitLoss) {
     // Calculate the entry value (what we paid)
     const entryValue = amount * (price / (1 + profitLoss / 100));
 
@@ -638,21 +640,21 @@ function trade(tradeDetails) {
   });
 
   // Format profit/loss with color
-  const plText = profitLoss
+  const plText = hasProfitLoss
     ? (profitLoss > 0
         ? chalk.green(`+${profitLoss.toFixed(2)}%`)
         : chalk.red(`${profitLoss.toFixed(2)}%`))
     : chalk.grey('N/A');
 
   // Format USD profit/loss with color
-  const plUsdText = action === 'SELL' && profitLoss !== undefined
+  const plUsdText = action === 'SELL' && hasProfitLoss
     ? (pnlUsdValue > 0
         ? chalk.green(pnlUsd)
         : chalk.red(pnlUsd))
     : chalk.grey('N/A');
 
   // Format SOL profit/loss with color
-  const plSolText = action === 'SELL' && profitLoss !== undefined
+  const plSolText = action === 'SELL' && hasProfitLoss
     ? (pnlSolValue > 0
         ? chalk.green(pnlSol)
         : chalk.red(pnlSol))
@@ -681,10 +683,10 @@ function trade(tradeDetails) {
   logTrade(tradeDetails);
 
   // Also log to user.log for important trade info
-  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${profitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})`);
+  logUser(`${action.toUpperCase()} ${symbol} at $${price} | ${hasProfitLoss ? (profitLoss > 0 ? '+' : '') + profitLoss.toFixed(2) + '%' : 'N/A'} (${pnlUsd}) (${pnlSol})`);
 
   // Log to wallet log if it's a completed trade with P/L
-  if (profitLoss) {
+  if (hasProfitLoss) {
     logWallet({
       balance: null, // Will be updated elsewhere
       positions: [],

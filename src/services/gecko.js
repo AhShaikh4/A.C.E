@@ -43,7 +43,7 @@ const fetchNewPools = async (network = 'solana', pages = 5, applyFilters = false
     const minVolume6h = 5000;
     return pools.filter(pool => {
       const ageDays = pool.attributes.pool_created_at
-        ? (currentTime - pool.attributes.pool_created_at) / (1000 * 60 * 60 * 24)
+        ? (currentTime - new Date(pool.attributes.pool_created_at).getTime()) / (1000 * 60 * 60 * 24)
         : Infinity;
       const liquidity = parseFloat(pool.attributes.reserve_in_usd || 0);
       const volume6h = parseFloat(pool.attributes.volume_usd?.h6 || 0);
@@ -72,7 +72,7 @@ const fetchTrendingPools = async (network = 'solana', durations = ['1h', '6h', '
     const minVolume6h = 5000;
     return pools.filter(pool => {
       const ageDays = pool.attributes.pool_created_at
-        ? (currentTime - pool.attributes.pool_created_at) / (1000 * 60 * 60 * 24)
+        ? (currentTime - new Date(pool.attributes.pool_created_at).getTime()) / (1000 * 60 * 60 * 24)
         : Infinity;
       const liquidity = parseFloat(pool.attributes.reserve_in_usd || 0);
       const volume6h = parseFloat(pool.attributes.volume_usd?.h6 || 0);

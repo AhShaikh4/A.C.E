@@ -20,7 +20,7 @@ dotenv.config();
 // Import from existing codebase
 const { performTA, fetchOHLCV, calculateIndicators } = require('../TA');
 const { meetsBuyCriteria, meetsSellCriteria } = require('../trading');
-const { getTokenHoldersHistorical } = require('../src/services/morali');
+const { getTokenHoldersHistorical } = require('../src/services/moralis');
 const { DexScreenerService } = require('../src/services/dexscreener');
 const { BOT_CONFIG } = require('../config');
 const { isBlacklisted, initializeBlacklist } = require('../blacklist');
@@ -31,6 +31,7 @@ const { logTrade, updateStats, logSimulationStats, generateRandomString, withFal
 // Use constants from config.js
 const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Native SOL mint address
 const BUY_AMOUNT_LAMPORTS = BOT_CONFIG.BUY_AMOUNT_SOL * 1e9; // Convert SOL to lamports
+const MINIMUM_SOL_LAMPORTS = (BOT_CONFIG.MINIMUM_SOL_BALANCE ?? 0.001) * 1e9;
 const MAX_POSITIONS = BOT_CONFIG.MAX_POSITIONS;
 const PRICE_CHECK_INTERVAL = BOT_CONFIG.POSITION_CHECK_INTERVAL_SECONDS * 1000; // Convert seconds to milliseconds
 const CHECK_INTERVAL = 60000; // 1 minute for checking positions and fetching tokens
@@ -71,7 +72,7 @@ let finalTokens = [];
  */
 function simulateWalletBalance() {
   return {
-    hasMinimumBalance: wallet.solBalance >= BUY_AMOUNT_LAMPORTS,
+    hasMinimumBalance: wallet.solBalance >= MINIMUM_SOL_LAMPORTS,
     solBalance: wallet.solBalance / 1e9 // Convert to SOL
   };
 }
@@ -475,29 +476,32 @@ async function getCurrentTokenData(tokenAddress, poolAddress, symbol, dexService
     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
     const toDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    let historicalHolders;
+    let historicalHolders = { result: [] };
     let holderChange24h = 0;
 
-    try {
-      historicalHolders = await withFallback(
-        async () => await getTokenHoldersHistorical(tokenAddress, fromDate, toDate),
-        { result: [] },
-        `Failed to fetch historical holders for ${symbol}`
-      );
+    if (BOT_CONFIG.MORALIS_ENABLED) {
+      try {
+        historicalHolders = await withFallback(
+          async () => await getTokenHoldersHistorical(tokenAddress, fromDate, toDate),
+          { result: [] },
+          `Failed to fetch historical holders for ${symbol}`
+        );
 
-      console.log(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
+        console.log(`Fetched historical holders for ${symbol}: ${historicalHolders?.result?.length || 0} data points`);
 
-      // Calculate holder change percentage
-      holderChange24h = historicalHolders?.result?.length > 1
-        ? ((historicalHolders.result[historicalHolders.result.length - 1].totalHolders -
-            historicalHolders.result[0].totalHolders) / (historicalHolders.result[0].totalHolders || 1) * 100) || 0
-        : 0;
-    } catch (error) {
-      console.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
-      historicalHolders = { result: [] };
-      // For simulation purposes, generate a random holder change between -5 and 10
-      holderChange24h = Math.random() * 15 - 5;
-      console.log(`Using simulated holder change for ${symbol}: ${holderChange24h.toFixed(2)}%`);
+        // Calculate holder change percentage
+        holderChange24h = historicalHolders?.result?.length > 1
+          ? ((historicalHolders.result[historicalHolders.result.length - 1].totalHolders -
+              historicalHolders.result[0].totalHolders) / (historicalHolders.result[0].totalHolders || 1) * 100) || 0
+          : 0;
+      } catch (error) {
+        console.error(`Failed to fetch historical holders for ${symbol}: ${error.message}`);
+        // For simulation purposes, generate a random holder change between -5 and 10
+        holderChange24h = Math.random() * 15 - 5;
+        console.log(`Using simulated holder change for ${symbol}: ${holderChange24h.toFixed(2)}%`);
+      }
+    } else {
+      console.log(`Moralis disabled, skipping holder history for ${symbol}`);
     }
 
     console.log(`Current holder change for ${symbol}: ${holderChange24h.toFixed(2)}%`);

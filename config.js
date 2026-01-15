@@ -25,6 +25,10 @@ const BOT_CONFIG = {
   BUY_AMOUNT_SOL: 0.08, // Amount of SOL to use per trade
   SLIPPAGE_BPS: 500, // Slippage tolerance in basis points (5%)
 
+  // Paper trading settings
+  PAPER_TRADING_ENABLED: false, // Enable paper trading mode
+  PAPER_START_USD: 50, // Starting paper balance in USD
+
   // Exit settings
   PROFIT_TARGET_PERCENT: 15, // Take profit at 15% gain
   STOP_LOSS_PERCENT: 7, // Stop loss at 7% loss

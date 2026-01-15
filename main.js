@@ -38,15 +38,24 @@ async function initialize() {
     logger.succeedSpinner('✓ Successfully connected to Solana mainnet-beta');
     logger.logUser('Successfully connected to Solana mainnet-beta network');
 
-    logger.startSpinner('Initializing wallet...');
-    const wallet = initializeWallet();
-    logger.succeedSpinner('Wallet initialized successfully');
-    logger.logUser('Wallet initialized successfully');
+    let wallet = null;
+    let walletInfo = null;
 
-    logger.startSpinner('Checking wallet balance...');
-    const walletInfo = await checkWalletBalance(wallet);
-    logger.succeedSpinner(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
-    logger.logUser(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
+    // If paper trading is enabled and no private key is provided, skip wallet init
+    if (!(BOT_CONFIG.PAPER_TRADING_ENABLED && !process.env.PRIVATE_KEY)) {
+      logger.startSpinner('Initializing wallet...');
+      wallet = initializeWallet();
+      logger.succeedSpinner('Wallet initialized successfully');
+      logger.logUser('Wallet initialized successfully');
+
+      logger.startSpinner('Checking wallet balance...');
+      walletInfo = await checkWalletBalance(wallet);
+      logger.succeedSpinner(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
+      logger.logUser(`Wallet public key: ${walletInfo.publicKey}\nWallet balance: ${walletInfo.balance} SOL`);
+    } else {
+      logger.warn('PRIVATE_KEY not set. Skipping wallet init (paper trading only).');
+      walletInfo = { publicKey: 'paper', balance: 0, hasMinimumBalance: true };
+    }
 
     // Log wallet status to user.log
     if (walletInfo.hasMinimumBalance) {
@@ -86,11 +95,16 @@ async function initialize() {
     }
 
     // Initialize bot mode
-    const mode = await initializeMode(walletInfo.balance);
+    const mode = await initializeMode(walletInfo.balance, { paperEnabled: BOT_CONFIG.PAPER_TRADING_ENABLED });
 
     // Display mode in a box
     const modeColor = mode === MODES.TRADING ? 'success' : 'info';
     logger.displayBox(`Bot is running in ${mode.toUpperCase()} mode`, 'Mode', modeColor);
+    if (mode === MODES.PAPER) {
+      const paperMessage = `Starting Balance: $${BOT_CONFIG.PAPER_START_USD.toFixed(2)}`;
+      logger.logUser(`Paper trading enabled. ${paperMessage}`);
+      logger.displayBox(paperMessage, 'Paper Wallet', 'info');
+    }
 
     // Initialize services
     logger.startSpinner('Initializing services...');
@@ -191,8 +205,8 @@ async function runCycle(services) {
 
     logger.info(`Analysis Cycle Completed in ${chalk.cyan(duration + 'ms')}`);
 
-    // Execute trading strategy if in trading mode
-    if (services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED) {
+    // Execute trading strategy if in trading or paper mode
+    if ((services.mode === MODES.TRADING || services.mode === MODES.PAPER) && BOT_CONFIG.TRADING_ENABLED) {
       logger.startSpinner('Executing trading strategy...');
       const result = await trading.executeTradingStrategy(analyzedTokens, services);
 
@@ -255,6 +269,7 @@ async function startBot() {
     // Initialize all services
     logger.infoUser('Initializing A.C.E services...');
     const services = await initialize();
+    startTime = Date.now();
     currentServices = services; // Store services globally
     isRunning = true;
 
@@ -263,10 +278,11 @@ async function startBot() {
     await fs.mkdir(logDir, { recursive: true }).catch(() => {});
 
     // Display bot configuration in a box
-    const isTradingEnabled = services.mode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED;
+    const isTradingEnabled = (services.mode === MODES.TRADING || services.mode === MODES.PAPER) && BOT_CONFIG.TRADING_ENABLED;
     const configMessage = [
       `Network: ${chalk.cyan(BOT_CONFIG.NETWORK)}`,
       `Trading Enabled: ${isTradingEnabled ? chalk.green('YES') : chalk.red('NO')}`,
+      `Paper Trading: ${services.mode === MODES.PAPER ? chalk.green('YES') : chalk.gray('NO')}`,
       `Analysis Interval: ${chalk.cyan(BOT_CONFIG.ANALYSIS_INTERVAL_MINUTES + ' minutes')}`,
       `Max Positions: ${chalk.cyan(BOT_CONFIG.MAX_POSITIONS.toString())}`,
       `Buy Amount: ${chalk.cyan(BOT_CONFIG.BUY_AMOUNT_SOL + ' SOL')}`
@@ -393,12 +409,13 @@ async function main() {
 function getBotStatus() {
   // Get the current mode if the bot is running
   const currentMode = isRunning && currentServices ? currentServices.mode : null;
-  const isTradingEnabled = currentMode === MODES.TRADING && BOT_CONFIG.TRADING_ENABLED;
+  const isTradingEnabled = (currentMode === MODES.TRADING || currentMode === MODES.PAPER) && BOT_CONFIG.TRADING_ENABLED;
 
   return {
     isRunning,
     uptime: isRunning ? Date.now() - startTime : 0,
     positions: trading.getCurrentPositions(),
+    paper: currentMode === MODES.PAPER ? trading.getPaperState() : null,
     config: {
       network: BOT_CONFIG.NETWORK,
       tradingEnabled: isTradingEnabled,

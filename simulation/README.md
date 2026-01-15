@@ -44,12 +44,12 @@ The simulator will:
 
 ## Configuration
 
-Key parameters can be adjusted in `simulator.js`:
+Key parameters are read from `config.js` and used by `simulator.js`:
 
-- `BUY_AMOUNT_LAMPORTS`: Amount of SOL to use per trade (default: 0.2 SOL)
-- `MAX_POSITIONS`: Maximum number of concurrent positions (default: 4)
-- `PRICE_CHECK_INTERVAL`: How often to check prices (default: 30 seconds)
-- `CHECK_INTERVAL`: How often to run the main simulation cycle (default: 1 minute)
+- `BOT_CONFIG.BUY_AMOUNT_SOL`: Amount of SOL to use per trade
+- `BOT_CONFIG.MAX_POSITIONS`: Maximum number of concurrent positions
+- `BOT_CONFIG.POSITION_CHECK_INTERVAL_SECONDS`: How often to check prices
+- `CHECK_INTERVAL`: How often to run the main simulation cycle (in `simulator.js`)
 
 ## Integration
 
